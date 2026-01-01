@@ -38,7 +38,6 @@ add_executable(bkpt ${APP_SOURCES})
 
 # The app needs the public headers and the engine library
 target_link_libraries(bkpt PRIVATE breakpoint)
-# target_link_libraries(bkpt PRIVATE libcli)
 target_link_libraries(bkpt PRIVATE linenoise)
 
 # ---------------------------------------------------------------------------

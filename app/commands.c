@@ -28,7 +28,6 @@
 
 #include "commands.h"
 
-
 command_t number2[] = 
 {
     {"",            ACTION_CONV,   NULL},
@@ -59,7 +58,7 @@ command_t top_level[] =
 {
     {"convert",     ACTION_INCOM,   conv_from_cmd},
     {"help",        ACTION_HELP,    NULL},
-    {"printf",      ACTION_PRINTF,  NULL},
+    {"continue",    ACTION_CONT,    NULL},
     {"quit",        ACTION_QUIT,    NULL},
     {NULL,          ACTION_INVALID, NULL}
 };
@@ -86,7 +85,7 @@ size_t tokenize_line(const char *line, tokens_t *tokens)
 
     assert(line != NULL);
     assert(tokens != NULL);
-    
+
     tokens->count = 0;
     tokens->capacity = MIN_TOKEN_COUNT;
     tokens->list = malloc(MIN_TOKEN_COUNT * sizeof(char *));
@@ -146,7 +145,7 @@ size_t compare_token(command_t *list, command_t **res, const char *token)
             *res = curr;
             return 1;
         }
-        
+
         // If keyword is "" then its a match by default
         // Or initial bytes of token are same
         if (curr->keyword[0] == '\0' ||
@@ -190,7 +189,7 @@ action_t process_line(const char *line, tokens_t *tokens)
 
         cmds = res_cmd->children;
     }
-    
+
     if (curr < tokens->count)
     {
         free_tokens(tokens);

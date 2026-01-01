@@ -29,7 +29,7 @@ typedef enum _action_t {
     ACTION_INVALID = 0,
     ACTION_INCOM,
     ACTION_AMBIGUOUS,
-    ACTION_PRINTF,
+    ACTION_CONT,
     ACTION_CONV,
     ACTION_TODO,
     ACTION_HELP,

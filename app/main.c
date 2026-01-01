@@ -26,50 +26,34 @@
 #include "commands.h"
 
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+#include <error.h>
 
-const char *action_str[] =
-{
-    "ACTION_INVALID",
-    "ACTION_INCOM",
-    "ACTION_AMBIGUOUS",
-    "ACTION_PRINTF",
-    "ACTION_CONV",
-    "ACTION_TODO",
-    "ACTION_HELP",
-    "ACTION_QUIT",
-};
+process_t debug_proc = {0};
 
-// Callback for tab-completion
-void completion(const char *buf, linenoiseCompletions *lc)
+void print_stop_reason(process_t *proc, unsigned char info)
 {
-    if (buf[0] == 'h')
+    printf("Process %d ", proc->pid);
+    switch (proc->state)
     {
-        linenoiseAddCompletion(lc, "help");
-        linenoiseAddCompletion(lc, "history");
-    }
-    else if (buf[0] == 'e')
-    {
-        linenoiseAddCompletion(lc, "exit");
-        linenoiseAddCompletion(lc, "echo");
+        case PROC_EXITED:
+            printf("exited with status %d\n", info);
+            break;
+        case PROC_KILLED:
+            printf("terminated with signal %s\n", strsignal(info));
+            break;
+        case PROC_STOPPED:
+            printf("stopped with signal %s\n", strsignal(info));
+            break;
     }
 }
 
-int main(int argc, char *argv[])
+void cli_repl()
 {
-
     char *line;
     tokens_t tokens = {0};
     action_t action = ACTION_INVALID;
+    printf("Welcome to breakpoint!\n");
 
-    // Setup the UI enhancements
-    linenoiseSetCompletionCallback(completion);
-
-    printf("Welcome to the breakpoint!\n");
-    printf("Type 'exit' to quit. Use Up/Down arrows for history.\n\n");
-
-    // The Main Loop
     while ((line = linenoise("bkpt> ")) != NULL)
     {
         // Do nothing if line is empty
@@ -78,23 +62,92 @@ int main(int argc, char *argv[])
             free(line);
             continue;
         }
-    
-        // 1. Handle "exit"
-        if (!strcmp(line, "exit"))
+
+        action = process_line(line, &tokens);
+        if (action == ACTION_QUIT)
         {
+            free_tokens(&tokens);
             free(line);
             break;
         }
-        action = process_line(line, &tokens);
-        if (action != ACTION_INVALID || action != ACTION_AMBIGUOUS)
-            free_tokens(&tokens);
-        
-        printf("%s\n", action_str[action]);
+        else if (action == ACTION_INVALID)
+        {
+            printf("Invalid command.\n");
+            linenoiseHistoryAdd(line);
+            free(line);
+            continue;
+        }
+        else if (action == ACTION_AMBIGUOUS)
+        {
+            printf("Ambiguous command.\n");
+            linenoiseHistoryAdd(line);
+            free(line);
+            continue;
+        }
+        else if (action == ACTION_CONT)
+        {
+            unsigned char info;
+            resume_proc(&debug_proc);
+            if (wait_proc(&debug_proc, &info) == 0)
+            {
+                print_stop_reason(&debug_proc, info);
+            }
+        }
 
-        // 3. Save to history
+        free_tokens(&tokens);
         linenoiseHistoryAdd(line);
         free(line);
     }
+}
+void print_usage(char *exe_name)
+{
+    printf("Usage: %s -p <pid>\n", exe_name);
+    printf("Usage: %s <executable-file> [args]\n", exe_name);
+}
+
+int main(int argc, char *argv[])
+{
+    int ret = 0;
+    pid_t debug_pid = 0;
+
+    if (argc == 1)
+    {
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    while((ret = getopt(argc, argv,"p:h")) != -1)
+    {
+        switch (ret)
+        {
+            case 'p':
+                debug_pid = atoi(optarg);
+                if (debug_pid <= 0)
+                {
+                    fprintf(stderr, "Unable to parse process id [%s]\n", optarg);
+                    return 1;
+                }
+
+                if (attach_proc(&debug_proc, debug_pid))
+                    return 1;
+
+                break;
+            case 'h':
+                print_usage(argv[0]);
+                return 0;
+            default:
+                print_usage(argv[0]);
+                return 1;
+        }
+    }
+
+    if (debug_pid == 0 && launch_proc(&debug_proc, argv + 1))
+    {
+        return 1;
+    }
+
+    cli_repl();
+    cleanup_proc(&debug_proc);
 
     return 0;
 }
