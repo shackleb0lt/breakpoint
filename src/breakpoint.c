@@ -22,17 +22,53 @@
  *
  */
 
-#include <errno.h>
+#define _GNU_SOURCE
+
+#include <stdio.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
+#include <fcntl.h>
+
 #include "breakpoint.h"
+
+#define BUF_SIZE 256
+
+void perror_pipe(int fd, const char *prefix)
+{
+    int len = 0;
+    char buf[BUF_SIZE] = {0};
+    int save_errno = errno;
+
+    len = snprintf(buf, BUF_SIZE, "%s: %s\n", prefix, strerror(save_errno));
+    
+    if (len <= 0 || len >= BUF_SIZE)
+        return;
+
+    write(fd, buf, len);
+}
 
 void init_proc_struct(process_t * proc)
 {
     proc->pid = 0;
-    proc->state = PROC_STOPPED;
+    proc->state = PROC_INIT;
     proc->kill_on_end = false;
-    proc->is_attached = false;
+}
+
+void print_stop_reason(process_t *proc, unsigned char info)
+{
+    printf("Process %d ", proc->pid);
+    switch (proc->state)
+    {
+        case PROC_EXITED:
+            printf("exited with status %d\n", info);
+            break;
+        case PROC_KILLED:
+            printf("terminated with signal %s\n", strsignal(info));
+            break;
+        case PROC_STOPPED:
+            printf("stopped with signal %s\n", strsignal(info));
+            break;
+    }
 }
 
 int wait_proc(process_t *proc, unsigned char *p_info)
@@ -80,90 +116,126 @@ int resume_proc(process_t *proc)
 
 int attach_proc(process_t *proc, pid_t debug_pid)
 {
-    int status = 0;
+    unsigned char info = 0;
     if (ptrace(PTRACE_ATTACH, debug_pid, NULL, NULL) < 0)
     {
         perror("attach_proc ptrace");
         return -1;
     }
 
-    if (waitpid(debug_pid, &status, 0) < 0)
-    {
-        perror("attach_proc waitpid:");
+    proc->kill_on_end = false;
+    proc->pid = debug_pid;
+    if (wait_proc(proc, &info))
         return -1;
-    }
 
-    if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP)
+    if (proc->state == PROC_STOPPED && info == SIGSTOP)
     {
-        proc->is_attached = true;
-        proc->pid = debug_pid;
-        proc->kill_on_end = false;
         proc->state = PROC_STOPPED;
         return 0;
     }
 
+    // By design it should never reach here
+    print_stop_reason(proc, info);
     return -1;
 }
 
-int launch_proc(process_t *proc, const char *argv[])
+int launch_proc(process_t *proc, char *const argv[])
 {
-    int status = 0;
+    ssize_t b_read = 0;
     pid_t debug_pid = 0;
+    int pipe_fd[2] = {0};
+    unsigned char info = 0;
+    char buf[BUF_SIZE] = {0};
+
+    if (pipe2(pipe_fd, O_CLOEXEC) < 0)
+    {
+        perror("launch_proc pipe2");
+        return -1;
+    }
     
     debug_pid = fork();
     if (debug_pid < 0)
     {
         perror("launch_proc fork:");
+        close(pipe_fd[0]);
+        close(pipe_fd[1]);
         return -1;
     }
 
     if (debug_pid == 0)
     {
+        close(pipe_fd[0]);
+
         if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) < 0)
         {
-            perror("launch_proc ptrace:");
+            perror_pipe(pipe_fd[1], "launch_proc ptrace");
+            close(pipe_fd[1]);
             exit(1);
         }
 
-        execvp(argv[0], (char *const *)argv);
+        if (strchr(argv[0], '/') != NULL)
+        {
+            execvp(argv[0], (char *const *) argv);
+        }
+        else
+        {
+            snprintf(buf, BUF_SIZE, "./%s", argv[0]);
+            if (access(buf, X_OK) == 0)
+                execvp(buf, (char *const *)argv);
 
-        perror("launch_proc execv");
+            else
+                execvp(argv[0], (char *const *)argv);
+        }
+
+        snprintf(buf, BUF_SIZE, "launch_proc execvp %s", argv[0]);
+        perror_pipe(pipe_fd[1], buf);
+        close(pipe_fd[1]);
         exit(1);
     }
 
-    if (waitpid(debug_pid, &status, 0) < 0)
+    // Must come before read, or else read will not get EOF
+    close(pipe_fd[1]); 
+
+    b_read = read(pipe_fd[0], buf, BUF_SIZE - 1);
+    close(pipe_fd[0]);
+
+    if (b_read > 0)
     {
-        perror("launch_proc waitpid");
+        buf[b_read] = '\0';
+        waitpid(debug_pid, NULL, 0);
+        fprintf(stderr, "%s", buf);
         return -1;
     }
 
-    if (WIFSTOPPED(status) && WSTOPSIG(status) == SIGTRAP)
+    proc->pid = debug_pid;
+    if (wait_proc(proc, &info))
+        return -1;
+
+    if (proc->state == PROC_STOPPED && info == SIGTRAP)
     {
         proc->kill_on_end = true;
-        proc->pid = debug_pid;
-        proc->is_attached = true;
-        proc->state = PROC_STOPPED;
         return 0;
     }
 
+    // By design it should never reach here
+    print_stop_reason(proc, info);
     return -1;
 }
 
 void cleanup_proc(process_t *proc)
 {
     int status = 0;
-
-    if (proc->pid == 0)
+    if (proc->pid <= 0)
         return;
     
-    if (proc->is_attached)
+    if (proc->state == PROC_RUNNING)
     {
-        if (proc->state == PROC_RUNNING)
-        {
-            kill(proc->pid, SIGSTOP);
-            waitpid(proc->pid, &status, 0);
-        }
+        kill(proc->pid, SIGSTOP);
+        wait_proc(proc, NULL);
+    }
 
+    if (proc->state == PROC_STOPPED)
+    {
         ptrace(PTRACE_DETACH, proc->pid, NULL, NULL);
         kill(proc->pid, SIGCONT);
     }

@@ -30,7 +30,7 @@ target_include_directories(breakpoint PUBLIC inc)
 target_include_directories(breakpoint PRIVATE src)
 
 # ---------------------------------------------------------------------------
-# 3. Final Executable: app
+# 3. Final Executable: bkpt
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE APP_SOURCES "app/*.c")
 
@@ -41,12 +41,22 @@ target_link_libraries(bkpt PRIVATE breakpoint)
 target_link_libraries(bkpt PRIVATE linenoise)
 
 # ---------------------------------------------------------------------------
-# 4. Testing Target (Commented out)
+# 4. Testing Library: breakpoint
 # ---------------------------------------------------------------------------
 # To enable: Create a 'tests' folder, add test files, and uncomment below.
-#
-# enable_testing()
-# file(GLOB_RECURSE TEST_SOURCES "tests/*.c")
-# add_executable(run_tests ${TEST_SOURCES})
-# target_link_libraries(run_tests PRIVATE breakpoint_lib)
-# add_test(NAME AllTests COMMAND run_tests)
+
+enable_testing()
+
+add_executable(debug_bin test/debug_bin.c)
+target_compile_options(debug_bin PRIVATE -g)
+
+add_executable(test_launch test/test_launch.c)
+target_link_libraries(test_launch PRIVATE breakpoint)
+
+add_executable(test_attach test/test_attach.c)
+target_link_libraries(test_attach PRIVATE breakpoint)
+
+add_test(NAME TestSimple  COMMAND debug_bin "2")
+add_test(NAME TestComplex COMMAND debug_bin "6" "/tmp/iliketomoveit")
+add_test(NAME TestLaunch COMMAND test_launch)
+add_test(NAME TestAttach COMMAND test_attach)

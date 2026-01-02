@@ -26,26 +26,8 @@
 #include "commands.h"
 
 #include <stdio.h>
-#include <error.h>
 
 process_t debug_proc = {0};
-
-void print_stop_reason(process_t *proc, unsigned char info)
-{
-    printf("Process %d ", proc->pid);
-    switch (proc->state)
-    {
-        case PROC_EXITED:
-            printf("exited with status %d\n", info);
-            break;
-        case PROC_KILLED:
-            printf("terminated with signal %s\n", strsignal(info));
-            break;
-        case PROC_STOPPED:
-            printf("stopped with signal %s\n", strsignal(info));
-            break;
-    }
-}
 
 void cli_repl()
 {
@@ -99,6 +81,7 @@ void cli_repl()
         free(line);
     }
 }
+
 void print_usage(char *exe_name)
 {
     printf("Usage: %s -p <pid>\n", exe_name);

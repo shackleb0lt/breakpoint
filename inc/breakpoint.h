@@ -22,14 +22,17 @@
  * 
 */
 
-#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <stdbool.h>
+#include <error.h>
+#include <errno.h>
 
 typedef enum _process_state_t
 {
+    PROC_INIT = 0,
     PROC_STOPPED,
     PROC_RUNNING,
     PROC_EXITED,
@@ -40,12 +43,13 @@ typedef struct _process_t
 {
     pid_t pid;
     process_state_t state;
-    bool kill_on_end; 
-    bool is_attached; 
+    bool kill_on_end;
 } process_t;
 
 int resume_proc(process_t *proc);
-void cleanup_proc(process_t *proc);
-int launch_proc(process_t *proc, const char *argv[]);
+int launch_proc(process_t *proc, char *const argv[]);
 int attach_proc(process_t *proc, pid_t debug_pid);
 int wait_proc(process_t *proc, unsigned char *p_info);
+
+void cleanup_proc(process_t *proc);
+void print_stop_reason(process_t *proc, unsigned char info);
