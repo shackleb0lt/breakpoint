@@ -29,7 +29,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 
-#include "breakpoint.h"
+#include "process.h"
 
 #define BUF_SIZE 256
 

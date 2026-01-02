@@ -22,6 +22,9 @@
  * 
 */
 
+#ifndef BKPT_LIB_PROCESS_H
+#define BKPT_LIB_PROCESS_H
+
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -53,3 +56,5 @@ int wait_proc(process_t *proc, unsigned char *p_info);
 
 void cleanup_proc(process_t *proc);
 void print_stop_reason(process_t *proc, unsigned char info);
+
+#endif
