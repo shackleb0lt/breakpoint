@@ -1,117 +1,134 @@
-#define _GNU_SOURCE
+/**
+ * MIT License
+ *
+ * Copyright (c) 2025 Aniruddha Kawade
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ */
 
 #include "test_common.h"
-#include <sys/wait.h>
-
-pid_t create_proc(char *const argv[])
-{
-    ssize_t b_read = 0;
-    pid_t debug_pid = 0;
-    int pipe_fd[2] = {0};
-    unsigned char info = 0;
-    char buf[BUF_SIZE] = {0};
-
-    if (pipe2(pipe_fd, O_CLOEXEC) < 0)
-    {
-        perror("create_proc pipe2");
-        return -1;
-    }
-    
-    debug_pid = fork();
-    if (debug_pid < 0)
-    {
-        perror("create_proc fork:");
-        close(pipe_fd[0]);
-        close(pipe_fd[1]);
-        return -1;
-    }
-
-    if (debug_pid == 0)
-    {
-        close(pipe_fd[0]);
-        if (strchr(argv[0], '/') != NULL)
-        {
-            execvp(argv[0], (char *const *) argv);
-        }
-        else
-        {
-            snprintf(buf, BUF_SIZE, "./%s", argv[0]);
-            if (access(buf, X_OK) == 0)
-                execvp(buf, (char *const *)argv);
-
-            else
-                execvp(argv[0], (char *const *)argv);
-        }
-
-        snprintf(buf, BUF_SIZE, "create_proc execvp %s %s", argv[0], strerror(errno));
-        write(pipe_fd[1], buf, strlen(buf));
-        close(pipe_fd[1]);
-        exit(1);
-    }
-
-    // Must come before read, or else read will not get EOF
-    close(pipe_fd[1]); 
-
-    b_read = read(pipe_fd[0], buf, BUF_SIZE - 1);
-    close(pipe_fd[0]);
-
-    if (b_read > 0)
-    {
-        buf[b_read] = '\0';
-        waitpid(debug_pid, NULL, 0);
-        fprintf(stderr, "%s", buf);
-        return -1;
-    }
-
-    return debug_pid;
-}
 
 int main()
 {
-    char status = 0;
-    pid_t cpid = 0;
-    unsigned char info = 0;
     process_t debug_proc = {0};
 
-    char *const exec[] =
     {
-        "./debug_bin",
-        "3",
-        // "/tmp/dummy_attach.bin",
-        NULL
-    };
+        // Test Attach to non existent process
+        if (process_exists(999999) == false)
+            assert(attach_proc(&debug_proc, 999999) == -1);
+    }
 
-    // Test Non Existent Process
-    if (process_exists(999999) == false)
-        assert(attach_proc(&debug_proc, 999999) == -1);
+    {
+        // Test insufficient permission    
+        if (process_exists(1) == true && errno == EPERM)
+            assert(attach_proc(&debug_proc, 1) == -1);
+    }
 
-    // Test insufficient permission    
-    if (process_exists(1) == true && errno == EPERM)
-        assert(attach_proc(&debug_proc, 1) == -1);
+    {
+        pid_t debug_pid = 0;
+        char *const exec[] =
+        {
+            "two_seconds",
+            NULL
+        };
 
-    // Launch genuine process
-    cpid = create_proc(exec);
-    assert(process_exists(cpid) == true);
+        // Launch genuine process
+        debug_pid = process_create(exec);
+        assert(process_exists(debug_pid) == true);
+        assert(process_running(debug_pid) == true);
 
-    // Attach to genuine process
-    assert(attach_proc(&debug_proc, cpid) == 0);
-    assert(get_process_status(debug_proc.pid) == 't');
-    assert(debug_proc.state == PROC_STOPPED);
+        // Attach to this genuine process
+        assert(attach_proc(&debug_proc, debug_pid) == 0);
+        assert(process_status(debug_proc.pid) == 't');
+        assert(debug_proc.state == PROC_STOPPED);
 
-    // Resume the process
-    assert(resume_proc(&debug_proc) == 0);
-    status = get_process_status(debug_proc.pid);
-    assert((status == 'R') || (status == 'S'));
-    assert(debug_proc.state == PROC_RUNNING);
+        // Resume the process
+        assert(resume_proc(&debug_proc) == 0);
+        assert(process_running(debug_pid) == true);
+        assert(debug_proc.state == PROC_RUNNING);
 
-    // Wait for process to finish
-    assert(wait_proc(&debug_proc, &info) == 0);
-    assert(debug_proc.state == PROC_EXITED);
+        // Wait for process to finish
+        assert(wait_proc(&debug_proc, NULL) == 0);
+        assert(process_exists(debug_proc.pid) == false);
+        assert(debug_proc.state == PROC_EXITED);
+    }
 
-    debug_proc.kill_on_end = true;
-    cleanup_proc(&debug_proc);
+    {
+        pid_t debug_pid = 0;
+        char *const exec[] =
+        {
+            "two_seconds",
+            NULL
+        };
 
-    assert(process_exists(debug_proc.pid) == false);
+        // Launch genuine process
+        debug_pid = process_create(exec);
+        assert(process_exists(debug_pid) == true);
+        assert(process_running(debug_pid) == true);
+
+        // Attach to this genuine process
+        assert(attach_proc(&debug_proc, debug_pid) == 0);
+        assert(process_status(debug_proc.pid) == 't');
+        assert(debug_proc.state == PROC_STOPPED); 
+
+        // Resume the process
+        assert(resume_proc(&debug_proc) == 0);
+        assert(process_running(debug_pid) == true);
+        assert(debug_proc.state == PROC_RUNNING);
+
+        // Test detach from running process
+        cleanup_proc(&debug_proc);
+        assert(process_exists(debug_proc.pid) == true);
+        assert(process_running(debug_pid) == true);
+        assert(debug_proc.state == PROC_RUNNING);
+
+        // Kill the process
+        process_destroy(debug_pid);
+    }
+
+    {
+        pid_t debug_pid = 0;
+        char *const exec[] =
+        {
+            "two_seconds",
+            NULL
+        };
+
+        // Launch genuine process
+        debug_pid = process_create(exec);
+        assert(process_exists(debug_pid) == true);
+        assert(process_running(debug_pid) == true);
+
+        // Attach to this genuine process
+        assert(attach_proc(&debug_proc, debug_pid) == 0);
+        assert(process_status(debug_proc.pid) == 't');
+        assert(debug_proc.state == PROC_STOPPED); 
+
+        // Test detach from stopped process
+        cleanup_proc(&debug_proc);
+        assert(process_exists(debug_proc.pid) == true);
+        assert(process_running(debug_pid) == true);
+        assert(debug_proc.state == PROC_RUNNING);
+
+        // Kill the process
+        process_destroy(debug_pid);
+    }
 
     return 0;
 }

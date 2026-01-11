@@ -25,13 +25,123 @@
 #define _GNU_SOURCE
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 
 #include "process.h"
+#include "registers.h"
 
 #define BUF_SIZE 256
+
+typedef const register_info_t * crit;
+
+char g_error_string[BUF_SIZE] = {0};
+
+const char *get_breakpoint_err()
+{
+    return (const char *)g_error_string;
+}
+
+void save_err(const char *fmt, ...)
+{
+    int len = 0;
+    va_list args;
+    int saved_errno = errno;
+    char *ptr = g_error_string;
+
+    va_start(args, fmt);
+    len = vsnprintf(ptr, BUF_SIZE - 1, fmt, args);
+    va_end(args);
+
+    if (len < 0 || len >= BUF_SIZE - 1)
+        return;
+    if (saved_errno == 0)
+        return;
+
+    snprintf(ptr + len, BUF_SIZE - 1 - len, " : %s", strerror(saved_errno));
+    errno = 0;
+}
+
+static int read_registers_proc(process_t *proc)
+{
+    int ret = 0;
+    int64_t reg_data = 0;
+
+    ret = ptrace(PTRACE_GETREGS, proc->pid, NULL, &(proc->data.regs));
+    if (ret < 0)
+    {
+        save_err("%s ptrace(PTRACE_GETREGS)", __func__);
+        return -1;
+    }
+
+    ret = ptrace(PTRACE_GETFPREGS, proc->pid, NULL, &(proc->data.i387));
+    if (ret < 0)
+    {
+        save_err("%s ptrace(PTRACE_GETFPREGS)", __func__);
+        return -1;
+    }
+
+    for (size_t i = 0; i < 8; i++)
+    {
+        crit reg_info = get_register_info_by_id(REG64_DR0 + i);
+        if (reg_info == NULL)
+        {
+            save_err("%s get_register_info_by_id(%lu) returned NULL", __func__, REG64_DR0 + i);
+            return -1;
+        }
+
+        errno = 0;
+        reg_data = ptrace(PTRACE_PEEKUSER, proc->pid, reg_info->offset, NULL);
+        if (errno != 0)
+        {
+            save_err("%s ptrace(PTRACE_PEEKUSER)", __func__);
+            return -1;
+        }
+
+        proc->data.u_debugreg[i] = reg_data;
+    }
+
+    return 0;
+}
+
+static int write_gprs_proc(process_t *proc, struct user_regs_struct *gprs)
+{
+    int ret = ptrace(PTRACE_SETREGS, proc->pid, NULL, gprs);
+    if (ret < 0)
+    {
+        save_err("%s ptrace(PTRACE_SETREGS)", __func__);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int write_fprs_proc(process_t *proc, struct user_fpregs_struct *fprs)
+{
+    int ret = ptrace(PTRACE_SETFPREGS, proc->pid, NULL, fprs);
+    if (ret < 0)
+    {
+        save_err("%s ptrace(PTRACE_SETFPREGS)", __func__);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int poke_register_proc(process_t *proc, size_t off, uint64_t data)
+{
+    int ret = 0;
+    ret = ptrace(PTRACE_POKEUSER, proc->pid, off, data);
+    if (ret < 0)
+    {
+        save_err("%s ptrace(PTRACE_POKEUSER)", __func__);
+        return -1;
+    }
+
+    return 0;
+}
 
 void perror_pipe(int fd, const char *prefix)
 {
@@ -54,21 +164,29 @@ void init_proc_struct(process_t * proc)
     proc->kill_on_end = false;
 }
 
-void print_stop_reason(process_t *proc, unsigned char info)
+const char *get_stop_reason(process_t *proc, unsigned char info)
 {
-    printf("Process %d ", proc->pid);
+    static char stop_str[BUF_SIZE] = {0};
+    char *ptr = stop_str; 
+    int len = 0;
+
+    len = snprintf(ptr, BUF_SIZE - 1, "Process %d ", proc->pid);
+    ptr += len;
+
     switch (proc->state)
     {
         case PROC_EXITED:
-            printf("exited with status %d\n", info);
+            snprintf(ptr, BUF_SIZE - 1 - len, "exited with status %d\n", info);
             break;
         case PROC_KILLED:
-            printf("terminated with signal %s\n", strsignal(info));
+            snprintf(ptr, BUF_SIZE - 1 - len, "terminated with signal %s\n", strsignal(info));
             break;
         case PROC_STOPPED:
-            printf("stopped with signal %s\n", strsignal(info));
+            snprintf(ptr, BUF_SIZE - 1 - len, "stopped with signal %s\n", strsignal(info));
             break;
     }
+
+    return (const char *)stop_str;
 }
 
 int wait_proc(process_t *proc, unsigned char *p_info)
@@ -82,7 +200,7 @@ int wait_proc(process_t *proc, unsigned char *p_info)
 
     if (waitpid(proc->pid, &wait_status, options) < 0)
     {
-        perror("wait_proc waitpid:");
+        save_err("%s waitpid", __func__);
         return -1;
     }
 
@@ -97,8 +215,9 @@ int wait_proc(process_t *proc, unsigned char *p_info)
     else if (WIFSTOPPED(wait_status)) {
         proc->state = PROC_STOPPED;
         *p_info = WSTOPSIG(wait_status);
+        return read_registers_proc(proc);
     }
-    
+
     return 0;
 }
 
@@ -106,7 +225,7 @@ int resume_proc(process_t *proc)
 {
     if (ptrace(PTRACE_CONT, proc->pid, NULL, NULL) < 0)
     {
-        perror("resume_proc ptrace:");
+        save_err("%s ptrace(PTRACE_CONT)", __func__);
         return -1;
     }
 
@@ -119,7 +238,7 @@ int attach_proc(process_t *proc, pid_t debug_pid)
     unsigned char info = 0;
     if (ptrace(PTRACE_ATTACH, debug_pid, NULL, NULL) < 0)
     {
-        perror("attach_proc ptrace");
+        save_err("%s ptrace(PTRACE_ATTACH)", __func__);
         return -1;
     }
 
@@ -135,7 +254,7 @@ int attach_proc(process_t *proc, pid_t debug_pid)
     }
 
     // By design it should never reach here
-    print_stop_reason(proc, info);
+    save_err("Attach failed as %s", get_stop_reason(proc, info));
     return -1;
 }
 
@@ -149,14 +268,14 @@ int launch_proc(process_t *proc, char *const argv[])
 
     if (pipe2(pipe_fd, O_CLOEXEC) < 0)
     {
-        perror("launch_proc pipe2");
+        save_err("%s pipe2", __func__);
         return -1;
     }
     
     debug_pid = fork();
     if (debug_pid < 0)
     {
-        perror("launch_proc fork:");
+        save_err("%s fork", __func__);
         close(pipe_fd[0]);
         close(pipe_fd[1]);
         return -1;
@@ -168,7 +287,7 @@ int launch_proc(process_t *proc, char *const argv[])
 
         if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) < 0)
         {
-            perror_pipe(pipe_fd[1], "launch_proc ptrace");
+            perror_pipe(pipe_fd[1], "launch_proc ptrace(PTRACE_TRACEME)");
             close(pipe_fd[1]);
             exit(1);
         }
@@ -203,7 +322,7 @@ int launch_proc(process_t *proc, char *const argv[])
     {
         buf[b_read] = '\0';
         waitpid(debug_pid, NULL, 0);
-        fprintf(stderr, "%s", buf);
+        save_err("%s", buf);
         return -1;
     }
 
@@ -218,7 +337,7 @@ int launch_proc(process_t *proc, char *const argv[])
     }
 
     // By design it should never reach here
-    print_stop_reason(proc, info);
+    save_err("Launch failed as %s", get_stop_reason(proc, info));
     return -1;
 }
 
@@ -238,11 +357,131 @@ void cleanup_proc(process_t *proc)
     {
         ptrace(PTRACE_DETACH, proc->pid, NULL, NULL);
         kill(proc->pid, SIGCONT);
+        proc->state = PROC_RUNNING;
     }
 
     if (proc->kill_on_end)
     {
         kill(proc->pid, SIGKILL);
         waitpid(proc->pid, &status, 0);
+        proc->state = PROC_KILLED;
     }
+
+    errno = 0;
+}
+
+int get_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_size)
+{
+    uint8_t *dest_bytes = (uint8_t *)buf;
+    uint8_t *src_bytes = (uint8_t *)&(proc->data);
+    crit reg_info = get_register_info_by_id(id);
+
+    if (reg_info == NULL)
+    {
+        save_err("%s no register info of ID %lu", id);
+        return -1;
+    }
+
+    if (buf_size > reg_info->size)
+    {
+        save_err("%s register %lu cannot be larger than %lu bytes",
+            __func__, id, reg_info->size);
+        return -1;
+    }
+
+    memset(dest_bytes, 0, buf_size);
+    memcpy(dest_bytes, src_bytes + reg_info->offset, buf_size);
+    return 0;
+}
+
+int set_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_size)
+{
+    uint64_t data = 0;
+    size_t aligned_offset = 0;
+
+    uint8_t *src_bytes = (uint8_t *)buf;
+    uint8_t *dest_bytes = (uint8_t *)&(proc->data);
+    crit reg_info = get_register_info_by_id(id);
+
+    if (reg_info == NULL)
+    {
+        save_err("%s no register info of ID %lu", id);
+        return -1;
+    }
+
+    if (buf_size > reg_info->size)
+    {
+        save_err("%s register %lu cannot be larger than %lu bytes",
+            __func__, id, reg_info->size);
+        return -1;
+    }
+
+    memcpy(dest_bytes + reg_info->offset, src_bytes, buf_size);
+
+    if (reg_info->id >= REGFP_CWD)
+    {
+        return write_fprs_proc(proc, &(proc->data.i387));
+    }
+
+    aligned_offset = reg_info->offset & (~0b111);
+    data = *((uint64_t *)(dest_bytes + aligned_offset));
+    return poke_register_proc(proc, aligned_offset, data);
+}
+
+int get_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size)
+{
+    uint8_t *dest_bytes = (uint8_t *)buf;
+    uint8_t *src_bytes = (uint8_t *)&(proc->data);
+    crit reg_info = get_register_info_by_name(name);
+
+    if (reg_info == NULL)
+    {
+        save_err("%s no register by name %s", name);
+        return -1;
+    }
+
+    if (buf_size > reg_info->size)
+    {
+        save_err("%s register %s cannot be larger than %lu bytes",
+            __func__, name, reg_info->size);
+        return -1;
+    }
+
+    memset(dest_bytes, 0, buf_size);
+    memcpy(dest_bytes, src_bytes + reg_info->offset, buf_size);
+    return 0;
+}
+
+int set_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size)
+{
+    uint64_t data = 0;
+    size_t aligned_offset = 0;
+
+    uint8_t *src_bytes = (uint8_t *)buf;
+    uint8_t *dest_bytes = (uint8_t *)&(proc->data);
+    crit reg_info = get_register_info_by_name(name);
+
+    if (reg_info == NULL)
+    {
+        save_err("%s no register by name %s", name);
+        return -1;
+    }
+
+    if (buf_size > reg_info->size)
+    {
+        save_err("%s register %s cannot be larger than %lu bytes",
+            __func__, name, reg_info->size);
+        return -1;
+    }
+
+    memcpy(dest_bytes + reg_info->offset, src_bytes, buf_size);
+
+    if (reg_info->id >= REGFP_CWD)
+    {
+        return write_fprs_proc(proc, &(proc->data.i387));
+    }
+
+    aligned_offset = reg_info->offset & (~0b111);
+    data = *((uint64_t *)(dest_bytes + aligned_offset));
+    return poke_register_proc(proc, aligned_offset, data);
 }

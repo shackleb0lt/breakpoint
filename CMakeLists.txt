@@ -43,12 +43,11 @@ target_link_libraries(bkpt PRIVATE linenoise)
 # ---------------------------------------------------------------------------
 # 4. Testing Library: breakpoint
 # ---------------------------------------------------------------------------
-# To enable: Create a 'tests' folder, add test files, and uncomment below.
-
 enable_testing()
 
-add_executable(debug_bin test/debug_bin.c)
-target_compile_options(debug_bin PRIVATE -g)
+add_executable(two_seconds test/guinea/two_seconds.c)
+add_executable(outta_here test/guinea/outta_here.c)
+add_executable(asm_magic test/guinea/asm_magic.c)
 
 add_executable(test_launch test/test_launch.c)
 target_link_libraries(test_launch PRIVATE breakpoint)
@@ -56,7 +55,12 @@ target_link_libraries(test_launch PRIVATE breakpoint)
 add_executable(test_attach test/test_attach.c)
 target_link_libraries(test_attach PRIVATE breakpoint)
 
-add_test(NAME TestSimple  COMMAND debug_bin "2")
-add_test(NAME TestComplex COMMAND debug_bin "6" "/tmp/iliketomoveit")
-add_test(NAME TestLaunch COMMAND test_launch)
-add_test(NAME TestAttach COMMAND test_attach)
+add_executable(test_register test/test_register.c)
+target_link_libraries(test_register PRIVATE breakpoint)
+
+add_test(NAME TestGuinea1  COMMAND two_seconds)
+add_test(NAME TestGuinea2  COMMAND outta_here)
+
+add_test(NAME TestLaunch   COMMAND test_launch)
+add_test(NAME TestAttach   COMMAND test_attach)
+add_test(NAME TestRegister COMMAND test_register)

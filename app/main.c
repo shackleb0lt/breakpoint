@@ -72,7 +72,7 @@ void cli_repl()
             resume_proc(&debug_proc);
             if (wait_proc(&debug_proc, &info) == 0)
             {
-                print_stop_reason(&debug_proc, info);
+                printf("%s\n", get_stop_reason(&debug_proc, info));
             }
         }
 

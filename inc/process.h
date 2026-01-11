@@ -32,8 +32,11 @@
 #include <stdbool.h>
 #include <error.h>
 #include <errno.h>
+#include <sys/user.h>
 
-typedef enum _process_state_t
+#include "register_info.h"
+
+typedef enum
 {
     PROC_INIT = 0,
     PROC_STOPPED,
@@ -42,11 +45,12 @@ typedef enum _process_state_t
     PROC_KILLED,
 } process_state_t;
 
-typedef struct _process_t
+typedef struct
 {
     pid_t pid;
     process_state_t state;
     bool kill_on_end;
+    struct user data;
 } process_t;
 
 int resume_proc(process_t *proc);
@@ -55,6 +59,14 @@ int attach_proc(process_t *proc, pid_t debug_pid);
 int wait_proc(process_t *proc, unsigned char *p_info);
 
 void cleanup_proc(process_t *proc);
-void print_stop_reason(process_t *proc, unsigned char info);
+const char *get_breakpoint_err();
+const char *get_stop_reason(process_t *proc, unsigned char info);
+
+int get_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_size);
+int set_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_size);
+
+int get_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size);
+int set_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size);
+
 
 #endif
