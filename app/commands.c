@@ -36,7 +36,7 @@ command_t cmd_register_write_name[] =
 
 command_t cmd_register_write[] = 
 {
-    {"",            ACTION_INCOM,   NULL},
+    {"",            ACTION_INCOM,       cmd_register_write_name},
     {NULL,          ACTION_INVALID,     NULL}
 };
 

@@ -477,3 +477,67 @@ int set_register_by_name(process_t *proc, char *name, variant_t *var)
     data = *((uint64_t *)(dest_bytes + aligned_offset));
     return poke_register_proc(proc, aligned_offset, data);
 }
+
+int set_register_by_name_value(process_t *proc, char *name, char *value)
+{
+    char *ptr = NULL;
+    unsigned long long int data = 0;
+    variant_t var = {0};
+    crit reg_info = get_register_info_by_name(name);
+
+    if (reg_info == NULL)
+    {
+        save_err("%s no register by name %s", name);
+        return -1;
+    }
+
+    errno = 0;
+    var.type = reg_info->type;
+    if (reg_info->type <= TYPE_UINT64)
+    {
+        if (value[1] == 'x' || value[1] =='X')
+            data = strtoull(value, &ptr, 16);
+        else
+            data = strtoull(value, &ptr, 10);
+
+        switch (reg_info->type)
+        {
+            case TYPE_UINT8:
+                var.value.u8 = (uint8_t) data;
+                break;
+            case TYPE_UINT16:
+                var.value.u16 = (uint16_t) data;
+                break;
+            case TYPE_UINT32:
+                var.value.u32 = (uint32_t) data;
+                break;
+            case TYPE_UINT64:
+                var.value.u64 = (uint64_t) data;
+                break;
+        }
+    }
+    else if (reg_info->type == TYPE_FLOAT)
+    {
+        var.value.flt = strtof(value, &ptr);
+    }
+    else if (reg_info->type == TYPE_DOUBLE)
+    {
+        var.value.dbl = strtod(value, &ptr);
+    }
+    else if (reg_info->type == TYPE_LONG_DOUBLE)
+    {
+        var.value.l_dbl = strtold(value, &ptr);
+    }
+    else if (reg_info->type == TYPE_VECTOR)
+    {
+        var.value.dbl = strtod(value, &ptr);
+    }
+
+    if (errno != 0)
+    {
+        save_err("%s Error converting %s to %d", __func__, value, reg_info->type);
+        return -1;
+    }
+
+    return set_register_by_id(proc, reg_info->id, &var);
+}

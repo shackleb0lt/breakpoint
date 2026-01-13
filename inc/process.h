@@ -67,6 +67,6 @@ int set_register_by_id(process_t *proc, register_id id, variant_t *var);
 
 int get_register_by_name(process_t *proc, char *name, variant_t *var);
 int set_register_by_name(process_t *proc, char *name, variant_t *var);
-
+int set_register_by_name_value(process_t *proc, char *name, char *value);
 
 #endif

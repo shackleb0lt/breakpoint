@@ -174,6 +174,14 @@ void cli_repl()
         {
             display_register(&debug_proc, tokens.list[2]);
         }
+        else if (action == ACTION_WRITE_REG)
+        {
+            if (set_register_by_name_value(&debug_proc, 
+                tokens.list[2], tokens.list[3]))
+            {
+                printf("%s\n", get_breakpoint_err());
+            }
+        }
 
         free_tokens(&tokens);
         linenoiseHistoryAdd(line);
