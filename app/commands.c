@@ -28,37 +28,37 @@
 
 #include "commands.h"
 
-command_t number2[] = 
+command_t cmd_register_write_name[] =
 {
-    {"",            ACTION_CONV,   NULL},
-    {NULL,          ACTION_INVALID, NULL}
+    {"",            ACTION_WRITE_REG,   NULL},
+    {NULL,          ACTION_INVALID,     NULL}
 };
 
-command_t conv_to_cmd[] = 
+command_t cmd_register_write[] = 
 {
-    {"hex",         ACTION_INCOM,   number2},
-    {"dec",         ACTION_INCOM,   number2},
-    {NULL,          ACTION_INVALID, NULL}
+    {"",            ACTION_INCOM,   NULL},
+    {NULL,          ACTION_INVALID,     NULL}
 };
 
-command_t number1[] = 
+command_t cmd_register_read[] = 
 {
-    {"",            ACTION_INCOM,   conv_to_cmd},
-    {NULL,          ACTION_INVALID, NULL}
+    {"all",         ACTION_READ_REG_ALL,   NULL},
+    {"",            ACTION_READ_REG_ONE,   NULL},
+    {NULL,          ACTION_INVALID,    NULL}
 };
 
-command_t conv_from_cmd[] = 
+command_t cmd_register[] = 
 {
-    {"hex",         ACTION_INCOM,   number1},
-    {"dec",         ACTION_INCOM,   number1},
-    {NULL,          ACTION_INVALID, NULL}
+    {"read",        ACTION_READ_REG_GPR,   cmd_register_read},
+    {"write",       ACTION_INCOM,          cmd_register_write},
+    {NULL,          ACTION_INVALID,        NULL}
 };
 
 command_t top_level[] =
 {
-    {"convert",     ACTION_INCOM,   conv_from_cmd},
-    {"help",        ACTION_HELP,    NULL},
     {"continue",    ACTION_CONT,    NULL},
+    {"help",        ACTION_HELP,    NULL},
+    {"register",    ACTION_INCOM,   cmd_register},
     {"quit",        ACTION_QUIT,    NULL},
     {NULL,          ACTION_INVALID, NULL}
 };

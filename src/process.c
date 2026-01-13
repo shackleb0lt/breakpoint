@@ -370,9 +370,9 @@ void cleanup_proc(process_t *proc)
     errno = 0;
 }
 
-int get_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_size)
+int get_register_by_id(process_t *proc, register_id id, variant_t *var)
 {
-    uint8_t *dest_bytes = (uint8_t *)buf;
+    uint8_t *dest_bytes = (uint8_t *)&(var->value);
     uint8_t *src_bytes = (uint8_t *)&(proc->data);
     crit reg_info = get_register_info_by_id(id);
 
@@ -382,24 +382,20 @@ int get_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_si
         return -1;
     }
 
-    if (buf_size > reg_info->size)
-    {
-        save_err("%s register %lu cannot be larger than %lu bytes",
-            __func__, id, reg_info->size);
-        return -1;
-    }
+    var->type = reg_info->type;
 
-    memset(dest_bytes, 0, buf_size);
-    memcpy(dest_bytes, src_bytes + reg_info->offset, buf_size);
+    memset(dest_bytes, 0, 16);
+    memcpy(dest_bytes, src_bytes + reg_info->offset, reg_info->size);
     return 0;
 }
 
-int set_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_size)
+int set_register_by_id(process_t *proc, register_id id, variant_t *var)
 {
     uint64_t data = 0;
     size_t aligned_offset = 0;
-
-    uint8_t *src_bytes = (uint8_t *)buf;
+    
+    size_t src_size = 0;
+    uint8_t *src_bytes = (uint8_t *)&(var->value);
     uint8_t *dest_bytes = (uint8_t *)&(proc->data);
     crit reg_info = get_register_info_by_id(id);
 
@@ -409,15 +405,15 @@ int set_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_si
         return -1;
     }
 
-    if (buf_size > reg_info->size)
+    src_size = get_variant_size(var->type);
+    if (src_size > reg_info->size)
     {
-        save_err("%s register %lu cannot be larger than %lu bytes",
-            __func__, id, reg_info->size);
+        save_err("%s destination for %s smaller than %lu bytes", 
+            __func__, reg_info->name, reg_info->size);
         return -1;
     }
 
-    memcpy(dest_bytes + reg_info->offset, src_bytes, buf_size);
-
+    memcpy(dest_bytes + reg_info->offset, src_bytes, src_size);
     if (reg_info->id >= REGFP_CWD)
     {
         return write_fprs_proc(proc, &(proc->data.i387));
@@ -428,9 +424,9 @@ int set_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_si
     return poke_register_proc(proc, aligned_offset, data);
 }
 
-int get_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size)
+int get_register_by_name(process_t *proc, char *name, variant_t *var)
 {
-    uint8_t *dest_bytes = (uint8_t *)buf;
+    uint8_t *dest_bytes = (uint8_t *)&(var->value);
     uint8_t *src_bytes = (uint8_t *)&(proc->data);
     crit reg_info = get_register_info_by_name(name);
 
@@ -440,24 +436,20 @@ int get_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size
         return -1;
     }
 
-    if (buf_size > reg_info->size)
-    {
-        save_err("%s register %s cannot be larger than %lu bytes",
-            __func__, name, reg_info->size);
-        return -1;
-    }
+    var->type = reg_info->type;
 
-    memset(dest_bytes, 0, buf_size);
-    memcpy(dest_bytes, src_bytes + reg_info->offset, buf_size);
+    memset(dest_bytes, 0, 16);
+    memcpy(dest_bytes, src_bytes + reg_info->offset, reg_info->size);
     return 0;
 }
 
-int set_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size)
+int set_register_by_name(process_t *proc, char *name, variant_t *var)
 {
     uint64_t data = 0;
     size_t aligned_offset = 0;
 
-    uint8_t *src_bytes = (uint8_t *)buf;
+    size_t src_size = 0;
+    uint8_t *src_bytes = (uint8_t *)&(var->value);
     uint8_t *dest_bytes = (uint8_t *)&(proc->data);
     crit reg_info = get_register_info_by_name(name);
 
@@ -467,15 +459,15 @@ int set_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size
         return -1;
     }
 
-    if (buf_size > reg_info->size)
+    src_size = get_variant_size(var->type);
+    if (src_size > reg_info->size)
     {
-        save_err("%s register %s cannot be larger than %lu bytes",
-            __func__, name, reg_info->size);
+        save_err("%s destination for %s smaller than %lu bytes",
+            __func__, reg_info->name, reg_info->size);
         return -1;
     }
 
-    memcpy(dest_bytes + reg_info->offset, src_bytes, buf_size);
-
+    memcpy(dest_bytes + reg_info->offset, src_bytes, src_size);
     if (reg_info->id >= REGFP_CWD)
     {
         return write_fprs_proc(proc, &(proc->data.i387));

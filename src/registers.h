@@ -34,11 +34,8 @@
 #define REGNAME_LEN 12
 
 #define GPR_OFFSET(reg) (offsetof(struct user, regs) + offsetof(struct user_regs_struct, reg))
-#define DR_OFFSET(num) (offsetof(struct user, u_debugreg) + num * 8)
-
+#define DR_OFFSET(num)  (offsetof(struct user, u_debugreg) + num * 8)
 #define FPR_OFFSET(reg) (offsetof(struct user, i387) + offsetof(struct user_fpregs_struct, reg))
-#define FPR_SIZE(reg) (sizeof(((struct user_fpregs_struct *)0)->reg))
-
 #define STR_OFFSET(num) (offsetof(struct user, i387) + offsetof(struct user_fpregs_struct, st_space) + (num*16))
 #define XMM_OFFSET(num) (offsetof(struct user, i387) + offsetof(struct user_fpregs_struct, xmm_space) + (num*16))
 
@@ -49,12 +46,14 @@ typedef struct
     int32_t dwarf_id;
     size_t size;
     size_t offset;
+    variant_type_t type;
 } register_info_t;
 
 extern const register_info_t g_register_info[];
 extern const size_t g_register_info_count;
 
-const register_info_t *get_register_info_by_name(char *reg_name);
+size_t get_variant_size(variant_type_t type);
+const register_info_t *get_register_info_by_name(const char *reg_name);
 const register_info_t *get_register_info_by_id(register_id id);
 const register_info_t *get_register_info_by_dwarf(int32_t dwarf_id);
 

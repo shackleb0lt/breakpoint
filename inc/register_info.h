@@ -25,6 +25,40 @@
 #ifndef BKPT_LIB_REGISTER_INFO_H
 #define BKPT_LIB_REGISTER_INFO_H
 
+#include <stdint.h>
+
+typedef enum 
+{
+    TYPE_UINT8,
+    TYPE_UINT16,
+    TYPE_UINT32,
+    TYPE_UINT64,
+
+    TYPE_FLOAT,
+    TYPE_DOUBLE,
+    TYPE_LONG_DOUBLE,
+
+    TYPE_VECTOR,
+} variant_type_t;
+
+typedef struct
+{
+    variant_type_t type;
+    union
+    {
+        uint8_t  u8;
+        uint16_t u16;
+        uint32_t u32;
+        uint64_t u64;
+
+        float flt;
+        double dbl;
+        long double l_dbl;
+
+        uint8_t vector[16];
+    } value;
+} variant_t;
+
 typedef enum
 {
     REG00_INV = 0,
@@ -94,22 +128,22 @@ typedef enum
     REG8H_CH,
     REG8H_DH,
 
-    REG16_AL,
-    REG16_BL,
-    REG16_CL,
-    REG16_DL,
-    REG16_SIL,
-    REG16_DIL,
-    REG16_BPL,
-    REG16_SPL,
-    REG16_R8B,
-    REG16_R9B,
-    REG16_R10B,
-    REG16_R11B,
-    REG16_R12B,
-    REG16_R13B,
-    REG16_R14B,
-    REG16_R15B,
+    REG8L_AL,
+    REG8L_BL,
+    REG8L_CL,
+    REG8L_DL,
+    REG8L_SIL,
+    REG8L_DIL,
+    REG8L_BPL,
+    REG8L_SPL,
+    REG8L_R8B,
+    REG8L_R9B,
+    REG8L_R10B,
+    REG8L_R11B,
+    REG8L_R12B,
+    REG8L_R13B,
+    REG8L_R14B,
+    REG8L_R15B,
 
     REG64_DR0,
     REG64_DR1,
@@ -164,5 +198,8 @@ typedef enum
     REGFP_XMM14,
     REGFP_XMM15
 } register_id;
+
+register_id get_register_id_by_name(const char *name);
+const char *get_register_name_by_id(register_id id);
 
 #endif

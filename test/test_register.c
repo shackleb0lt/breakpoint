@@ -28,16 +28,9 @@
 
 int main()
 {
+    variant_t var;
     process_t debug_proc = {0};
     srand(time(NULL));
-
-    uint64_t r_val64 = 0;
-    uint32_t r_val32 = 0;
-    uint16_t r_val16 = 0;
-    uint8_t  r_val8 = 0;
-
-    float r_valF = 0;
-    double r_valD = 0;
 
     uint64_t val64 = (((uint64_t)rand()) << 32) | (((uint64_t)rand()));
     uint32_t val32 = ((uint32_t)(val64 >> 32)) ^ ((uint32_t)(val64 & 0xFFFFFFFF));
@@ -73,37 +66,47 @@ int main()
     assert(process_status(debug_proc.pid) == 't');
     assert(debug_proc.state == PROC_STOPPED);
 
-    assert(get_register_by_name(&debug_proc, "r12", &r_val64, sizeof(uint64_t)) == 0);
-    // printf("%lX %lX\n", r_val64, val64);
-    assert(r_val64 == val64);
+    assert(get_register_by_name(&debug_proc, "r12", &var) == 0);
+    printf("%lX %lX\n", var.value.u64, val64);
+    assert(var.value.u64 == val64);
 
-    assert(get_register_by_name(&debug_proc, "r13d", &r_val32, sizeof(uint32_t)) == 0);
-    // printf("%X %X\n", r_val32, val32);
-    assert(r_val32 == val32);
+    assert(get_register_by_name(&debug_proc, "r13d", &var) == 0);
+    printf("%X %X\n", var.value.u32, val32);
+    assert(var.value.u32 == val32);
 
-    assert(get_register_by_name(&debug_proc, "r14w", &r_val16, sizeof(uint16_t)) == 0);
-    // printf("%X %X\n", r_val16, val16);
-    assert(r_val16 == val16);
+    assert(get_register_by_name(&debug_proc, "r14w", &var) == 0);
+    printf("%X %X\n", var.value.u16, val16);
+    assert(var.value.u16 == val16);
 
-    assert(get_register_by_name(&debug_proc, "bh", &r_val8, sizeof(uint8_t)) == 0);
-    // printf("%X %X\n", r_val8, val8);
-    assert(r_val8 == val8);
+    assert(get_register_by_name(&debug_proc, "bh", &var) == 0);
+    printf("%X %X\n", var.value.u8, val8);
+    assert(var.value.u8 == val8);
 
-    assert(get_register_by_name(&debug_proc, "xmm2", &r_valD, sizeof(double)) == 0);
-    // printf("%a %a\n", r_valD, valD);
-    assert(r_valD == valD);
+    assert(get_register_by_name(&debug_proc, "xmm2", &var) == 0);
+    printf("%a %a\n", var.value.dbl, valD);
+    assert(var.value.dbl == valD);
 
-    assert(get_register_by_name(&debug_proc, "xmm3", &r_valF, sizeof(float)) == 0);
-    // printf("%a %a\n", r_valF, valF);
-    assert(r_valF == valF);
+    assert(get_register_by_name(&debug_proc, "xmm3", &var) == 0);
+    printf("%a %a\n", var.value.flt, valF);
+    assert(var.value.flt == valF);
+    
+    var.type = TYPE_UINT64; var.value.u64 = val64;
+    assert(set_register_by_name(&debug_proc, "r13",  &var) == 0);
 
-    assert(set_register_by_name(&debug_proc, "r13",  &val64, sizeof(uint64_t)) == 0);
-    assert(set_register_by_name(&debug_proc, "r14d", &val32, sizeof(uint32_t)) == 0);
-    assert(set_register_by_name(&debug_proc, "r12w", &val16, sizeof(uint16_t)) == 0);
-    assert(set_register_by_name(&debug_proc, "dh",   &val8,  sizeof(uint8_t))  == 0);
+    var.type = TYPE_UINT32; var.value.u32 = val32;
+    assert(set_register_by_name(&debug_proc, "r14d", &var) == 0);
 
-    assert(set_register_by_name(&debug_proc, "xmm3", &valD,  sizeof(double))  == 0);
-    assert(set_register_by_name(&debug_proc, "xmm2", &valF,  sizeof(float))   == 0);
+    var.type = TYPE_UINT16; var.value.u16 = val16;
+    assert(set_register_by_name(&debug_proc, "r12w", &var) == 0);
+    
+    var.type = TYPE_UINT8; var.value.u8 = val8;
+    assert(set_register_by_name(&debug_proc, "dh",   &var) == 0);
+
+    var.type = TYPE_DOUBLE; var.value.dbl = valD;
+    assert(set_register_by_name(&debug_proc, "xmm3", &var) == 0);
+
+    var.type = TYPE_FLOAT; var.value.flt = valF;
+    assert(set_register_by_name(&debug_proc, "xmm2", &var) == 0);
 
     assert(resume_proc(&debug_proc) == 0);
     assert(wait_proc(&debug_proc, &ret) == 0);

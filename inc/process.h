@@ -62,11 +62,11 @@ void cleanup_proc(process_t *proc);
 const char *get_breakpoint_err();
 const char *get_stop_reason(process_t *proc, unsigned char info);
 
-int get_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_size);
-int set_register_by_id(process_t *proc, register_id id, void *buf, size_t buf_size);
+int get_register_by_id(process_t *proc, register_id id, variant_t *var);
+int set_register_by_id(process_t *proc, register_id id, variant_t *var);
 
-int get_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size);
-int set_register_by_name(process_t *proc, char *name, void *buf, size_t buf_size);
+int get_register_by_name(process_t *proc, char *name, variant_t *var);
+int set_register_by_name(process_t *proc, char *name, variant_t *var);
 
 
 #endif

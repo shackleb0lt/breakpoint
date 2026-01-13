@@ -26,8 +26,88 @@
 #include "commands.h"
 
 #include <stdio.h>
+#include <stdint.h>
 
 process_t debug_proc = {0};
+
+void display_variant(process_t *proc, const char *reg_name, variant_t *var)
+{
+    switch (var->type)
+    {
+        case TYPE_UINT8:
+            printf("  %-12s 0x%-16x %-24u %-24d\n", reg_name, var->value.u8, var->value.u8, var->value.u8);
+            break;
+        case TYPE_UINT16:
+            printf("  %-12s 0x%-16x %-24u %-24d\n", reg_name, var->value.u16, var->value.u16, var->value.u16);
+            break;
+        case TYPE_UINT32:
+            printf("  %-12s 0x%-16x %-24u %-24d\n", reg_name, var->value.u32, var->value.u32, var->value.u32);
+            break;
+        case TYPE_UINT64:
+            printf("  %-12s 0x%-16lx %-24lu %-24ld\n", reg_name, var->value.u64, var->value.u64, var->value.u64);
+            break;
+        case TYPE_FLOAT:
+            printf("  %-12s %f\n", reg_name, var->value.flt);
+            break;
+        case TYPE_DOUBLE:
+            printf("  %-12s %lf\n", reg_name, var->value.dbl);
+            break;
+        case TYPE_LONG_DOUBLE:
+            printf("  %-12s %Lf\n", reg_name, var->value.l_dbl);
+            break;
+        case TYPE_VECTOR:
+            printf("  %-12s %-36f %-36lf\n", reg_name, var->value.flt, var->value.dbl);
+            break;
+    }
+}
+
+void display_register(process_t* proc, const char *reg_name)
+{
+    int ret = 0;
+    variant_t var;
+    register_id id = get_register_id_by_name(reg_name);
+    
+    if (id == REG00_INV || id == REG64_ORIG_RAX)
+    {
+        printf("No register named %s\n", reg_name);
+        return;
+    }
+
+    ret = get_register_by_id(proc, id, &var);
+    display_variant(proc, reg_name, &var);
+}
+
+void display_gpr_registers(process_t *proc)
+{
+    register_id id = REG00_INV + 1;
+    while (id < REG64_DR0)
+    {
+        if (id == REG64_ORIG_RAX)
+        {
+            id++;
+            continue;
+        }
+        
+        display_register(proc, get_register_name_by_id(id));
+        id++;
+    }
+}
+
+void display_all_registers(process_t *proc)
+{
+    register_id id = REG00_INV + 1;
+    while (id <= REGFP_XMM15)
+    {
+        if (id == REG64_ORIG_RAX)
+        {
+            id++;
+            continue;
+        }
+        
+        display_register(proc, get_register_name_by_id(id));
+        id++;
+    }
+}
 
 void cli_repl()
 {
@@ -59,6 +139,13 @@ void cli_repl()
             free(line);
             continue;
         }
+        else if (action == ACTION_INCOM)
+        {
+            printf("Incomplete command.\n");
+            linenoiseHistoryAdd(line);
+            free(line);
+            continue;
+        }
         else if (action == ACTION_AMBIGUOUS)
         {
             printf("Ambiguous command.\n");
@@ -74,6 +161,18 @@ void cli_repl()
             {
                 printf("%s\n", get_stop_reason(&debug_proc, info));
             }
+        }
+        else if (action == ACTION_READ_REG_GPR)
+        {
+            display_gpr_registers(&debug_proc);
+        }
+        else if (action == ACTION_READ_REG_ALL)
+        {
+            display_all_registers(&debug_proc);
+        }
+        else if (action == ACTION_READ_REG_ONE)
+        {
+            display_register(&debug_proc, tokens.list[2]);
         }
 
         free_tokens(&tokens);
