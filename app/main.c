@@ -30,7 +30,7 @@
 
 process_t debug_proc = {0};
 
-void display_variant(process_t *proc, const char *reg_name, variant_t *var)
+void display_variant(const char *reg_name, variant_t *var)
 {
     switch (var->type)
     {
@@ -63,7 +63,6 @@ void display_variant(process_t *proc, const char *reg_name, variant_t *var)
 
 void display_register(process_t* proc, const char *reg_name)
 {
-    int ret = 0;
     variant_t var;
     register_id id = get_register_id_by_name(reg_name);
     
@@ -73,8 +72,8 @@ void display_register(process_t* proc, const char *reg_name)
         return;
     }
 
-    ret = get_register_by_id(proc, id, &var);
-    display_variant(proc, reg_name, &var);
+    get_register_by_id(proc, id, &var);
+    display_variant(reg_name, &var);
 }
 
 void display_gpr_registers(process_t *proc)

@@ -28,6 +28,7 @@ add_library(breakpoint STATIC ${LIBRARY_SOURCES})
 # - src: Internal headers
 target_include_directories(breakpoint PUBLIC inc)
 target_include_directories(breakpoint PRIVATE src)
+# target_compile_options(breakpoint PRIVATE -Wall -Wextra -Wpedantic)
 
 # ---------------------------------------------------------------------------
 # 3. Final Executable: bkpt
@@ -39,6 +40,7 @@ add_executable(bkpt ${APP_SOURCES})
 # The app needs the public headers and the engine library
 target_link_libraries(bkpt PRIVATE breakpoint)
 target_link_libraries(bkpt PRIVATE linenoise)
+# target_compile_options(bkpt PRIVATE -Wall -Wextra -Wpedantic)
 
 # ---------------------------------------------------------------------------
 # 4. Testing Library: breakpoint
@@ -48,6 +50,10 @@ enable_testing()
 add_executable(two_seconds test/guinea/two_seconds.c)
 add_executable(outta_here test/guinea/outta_here.c)
 add_executable(asm_magic test/guinea/asm_magic.c)
+
+target_compile_options(two_seconds PRIVATE -g)
+target_compile_options(outta_here PRIVATE -g)
+target_compile_options(asm_magic PRIVATE -g)
 
 add_executable(test_launch test/test_launch.c)
 target_link_libraries(test_launch PRIVATE breakpoint)

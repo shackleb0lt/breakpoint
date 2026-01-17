@@ -163,7 +163,6 @@ action_t process_line(const char *line, tokens_t *tokens)
 {
     size_t curr = 0;
     size_t matches = 0;
-    action_t ret = ACTION_INVALID;
 
     command_t *cmds = top_level;
     command_t *res_cmd = NULL;

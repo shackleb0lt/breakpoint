@@ -64,6 +64,52 @@ void save_err(const char *fmt, ...)
     errno = 0;
 }
 
+void perror_pipe(int fd, const char *prefix)
+{
+    int len = 0;
+    char buf[BUF_SIZE] = {0};
+    int save_errno = errno;
+
+    len = snprintf(buf, BUF_SIZE, "%s: %s\n", prefix, strerror(save_errno));
+    
+    if (len <= 0 || len >= BUF_SIZE)
+        return;
+
+    write(fd, buf, len);
+}
+
+void init_proc_struct(process_t * proc)
+{
+    proc->pid = 0;
+    proc->state = PROC_INIT;
+    proc->kill_on_end = false;
+}
+
+const char *get_stop_reason(process_t *proc, unsigned char info)
+{
+    static char stop_str[BUF_SIZE] = {0};
+    char *ptr = stop_str; 
+    int len = 0;
+
+    len = snprintf(ptr, BUF_SIZE - 1, "Process %d ", proc->pid);
+    ptr += len;
+
+    switch (proc->state)
+    {
+        case PROC_EXITED:
+            snprintf(ptr, BUF_SIZE - 1 - len, "exited with status %d\n", info);
+            break;
+        case PROC_KILLED:
+            snprintf(ptr, BUF_SIZE - 1 - len, "terminated with signal %s\n", strsignal(info));
+            break;
+        case PROC_STOPPED:
+            snprintf(ptr, BUF_SIZE - 1 - len, "stopped with signal %s\n", strsignal(info));
+            break;
+    }
+
+    return (const char *)stop_str;
+}
+
 static int read_registers_proc(process_t *proc)
 {
     int ret = 0;
@@ -141,52 +187,6 @@ static int poke_register_proc(process_t *proc, size_t off, uint64_t data)
     }
 
     return 0;
-}
-
-void perror_pipe(int fd, const char *prefix)
-{
-    int len = 0;
-    char buf[BUF_SIZE] = {0};
-    int save_errno = errno;
-
-    len = snprintf(buf, BUF_SIZE, "%s: %s\n", prefix, strerror(save_errno));
-    
-    if (len <= 0 || len >= BUF_SIZE)
-        return;
-
-    write(fd, buf, len);
-}
-
-void init_proc_struct(process_t * proc)
-{
-    proc->pid = 0;
-    proc->state = PROC_INIT;
-    proc->kill_on_end = false;
-}
-
-const char *get_stop_reason(process_t *proc, unsigned char info)
-{
-    static char stop_str[BUF_SIZE] = {0};
-    char *ptr = stop_str; 
-    int len = 0;
-
-    len = snprintf(ptr, BUF_SIZE - 1, "Process %d ", proc->pid);
-    ptr += len;
-
-    switch (proc->state)
-    {
-        case PROC_EXITED:
-            snprintf(ptr, BUF_SIZE - 1 - len, "exited with status %d\n", info);
-            break;
-        case PROC_KILLED:
-            snprintf(ptr, BUF_SIZE - 1 - len, "terminated with signal %s\n", strsignal(info));
-            break;
-        case PROC_STOPPED:
-            snprintf(ptr, BUF_SIZE - 1 - len, "stopped with signal %s\n", strsignal(info));
-            break;
-    }
-
-    return (const char *)stop_str;
 }
 
 int wait_proc(process_t *proc, unsigned char *p_info)
