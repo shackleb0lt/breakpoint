@@ -1,6 +1,6 @@
 /**
  * MIT License
- * 
+ *
  * Copyright (c) 2025 Aniruddha Kawade
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -8,10 +8,10 @@
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -19,44 +19,43 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
-*/
+ *
+ */
 
-#ifndef BKPT_APP_COMMANDS_H
-#define BKPT_APP_COMMANDS_H
+#ifndef BKPT_LIB_PIPE_HPP
+#define BKPT_LIB_PIPE_HPP
 
-typedef enum _action_t {
-    ACTION_INVALID = 0,
-    ACTION_AMBIGUOUS,
-    ACTION_READ_REG_GPR,
-    ACTION_READ_REG_ALL,
-    ACTION_READ_REG_ONE,
-    ACTION_WRITE_REG,
-    ACTION_INCOM,
-    ACTION_CONT,
-    ACTION_HELP,
-    ACTION_QUIT,
-} action_t;
+#include <vector>
+#include <string>
 
-#define MAX_LINE_LEN 4096
-#define MIN_TOKEN_COUNT 4
-
-typedef struct _command_t
+class Pipe
 {
-    const char *keyword;
-    enum _action_t action;
-    struct _command_t *children;
-} command_t;
+public:
+    explicit Pipe(bool close_on_exec);
+    ~Pipe();
 
-typedef struct _tokens_t
-{
-    size_t count;
-    size_t capacity;
-    char *copy;
-    char **list;
-} tokens_t;
+    Pipe(const Pipe &) = delete;
+    Pipe &operator=(const Pipe &) = delete;
 
-void free_tokens(tokens_t *tokens);
-action_t process_line(const char *line, tokens_t *tokens);
+    Pipe(Pipe &&other) noexcept;
+    Pipe &operator=(Pipe &&other) noexcept;
+
+    // int get_read() const { return fds_[read_fd]; }
+    // int get_write() const { return fds_[write_fd]; }
+    // int release_read();
+    // int release_write();
+
+    void close_read();
+    void close_write();
+
+    void read(std::string &buf);
+    void write(std::string_view buf);
+
+private:
+    static constexpr unsigned BUF_SIZE = 256;
+    static constexpr unsigned read_fd = 0;
+    static constexpr unsigned write_fd = 1;
+    int fds_[2] = {-1, -1};
+};
 
 #endif

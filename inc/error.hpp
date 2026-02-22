@@ -22,51 +22,29 @@
  *
  */
 
-#define BLOCK_SIZE 512
+#ifndef BKPT_LIB_ERROR_HPP
+#define BKPT_LIB_ERROR_HPP
 
-static inline unsigned long long
-get_tick_frequency(void)
+#include <stdexcept>
+#include <cstring>
+
+class Error : public std::runtime_error
 {
-    unsigned long long freq;
-    __asm__ volatile (
-        "mrs %0, cntfrq_el0" 
-        : "=r"(freq)
-    );
-    return freq;
-}
-
-static inline unsigned long long
-get_ticks_serialized(void)
-{
-    unsigned long long val;
-    // 'isb' acts as the serialization barrier (like cpuid on x86)
-    // 'mrs' reads the system register CNTVCT_EL0 into a general purpose register
-    __asm__ volatile (
-        "isb\n\t"
-        "mrs %0, cntvct_el0\n\t"
-        "isb\n\t"
-        : "=r"(val)
-    );
-    return val;
-}
-
-int main()
-{
-    int i = 0;
-    unsigned long long block[BLOCK_SIZE] = {0};
-    unsigned long long freq = get_tick_frequency();
-    unsigned long long start = get_ticks_serialized();
-    unsigned long long end = start;
-    unsigned long long wait_ticks = freq * 2;
-
-    while (end - start < wait_ticks)
+public:
+    [[noreturn]] static void
+    send(const std::string &msg)
     {
-        for (i = 1; i < BLOCK_SIZE; i++)
-        {
-            block[i] = end + block[i - 1];
-        }
-        end = get_ticks_serialized();
+        throw Error(msg);
     }
 
-    return 0;
-}
+    [[noreturn]] static void
+    send_errno(const std::string &prefix)
+    {
+        throw Error(prefix + ": " + std::strerror(errno));
+    }
+
+private:
+    Error(const std::string &msg) : std::runtime_error(msg) {}
+};
+
+#endif

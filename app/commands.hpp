@@ -22,51 +22,34 @@
  *
  */
 
-#define BLOCK_SIZE 512
+#ifndef BKPT_APP_COMMANDS_HPP
+#define BKPT_APP_COMMANDS_HPP
 
-static inline unsigned long long
-get_tick_frequency(void)
+#include <string_view>
+#include <vector>
+
+enum class Action
 {
-    unsigned long long freq;
-    __asm__ volatile (
-        "mrs %0, cntfrq_el0" 
-        : "=r"(freq)
-    );
-    return freq;
-}
+    Invalid = 0,
+    Ambiguous,
+    ReadRegAll,
+    ReadRegGPR,
+    ReadReg,
+    WriteReg,
+    Incomplete,
+    Continue,
+    Help,
+    Quit,
+};
 
-static inline unsigned long long
-get_ticks_serialized(void)
+struct Command
 {
-    unsigned long long val;
-    // 'isb' acts as the serialization barrier (like cpuid on x86)
-    // 'mrs' reads the system register CNTVCT_EL0 into a general purpose register
-    __asm__ volatile (
-        "isb\n\t"
-        "mrs %0, cntvct_el0\n\t"
-        "isb\n\t"
-        : "=r"(val)
-    );
-    return val;
-}
+    std::string_view keyword;
+    Action action;
+    const Command *children;
+};
 
-int main()
-{
-    int i = 0;
-    unsigned long long block[BLOCK_SIZE] = {0};
-    unsigned long long freq = get_tick_frequency();
-    unsigned long long start = get_ticks_serialized();
-    unsigned long long end = start;
-    unsigned long long wait_ticks = freq * 2;
+std::pair<Action, std::vector<std::string_view>>
+process_line(std::string_view line);
 
-    while (end - start < wait_ticks)
-    {
-        for (i = 1; i < BLOCK_SIZE; i++)
-        {
-            block[i] = end + block[i - 1];
-        }
-        end = get_ticks_serialized();
-    }
-
-    return 0;
-}
+#endif
