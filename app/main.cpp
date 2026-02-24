@@ -22,10 +22,11 @@
  *
  */
 
+#include <cstdlib>
 #include <iostream>
-#include <string>
 #include <memory>
 #include <stdexcept>
+#include <string>
 
 #include "linenoise.h"
 #include "commands.hpp"
@@ -45,6 +46,10 @@ bool handle_command(std::string_view line, std::unique_ptr<Process> &proc)
     if (action == Action::Quit)
     {
         return false;
+    }
+    else if (action == Action::None)
+    {
+        return true;
     }
     else if (action == Action::Invalid)
     {
@@ -70,7 +75,7 @@ bool handle_command(std::string_view line, std::unique_ptr<Process> &proc)
             proc->wait();
         }
     }
-    catch (Error &err)
+    catch (const Error &err)
     {
         std::cout << "Error occured for " << tokens[0]
                   << ": " << err.what() << std::endl;

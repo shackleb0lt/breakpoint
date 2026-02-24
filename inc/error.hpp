@@ -25,8 +25,9 @@
 #ifndef BKPT_LIB_ERROR_HPP
 #define BKPT_LIB_ERROR_HPP
 
-#include <stdexcept>
+#include <cerrno>
 #include <cstring>
+#include <stdexcept>
 
 class Error : public std::runtime_error
 {
@@ -40,7 +41,8 @@ public:
     [[noreturn]] static void
     send_errno(const std::string &prefix)
     {
-        throw Error(prefix + ": " + std::strerror(errno));
+        const int err = errno;
+        throw Error(prefix + ": " + std::strerror(err));
     }
 
 private:

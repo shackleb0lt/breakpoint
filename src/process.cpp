@@ -27,9 +27,9 @@
 #include "error.hpp"
 
 #include <csignal>
-
+#include <string>
+#include <unistd.h>
 #include <sys/ptrace.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 
 void exit_with_perror(Pipe &pipe, std::string_view prefix)
@@ -54,7 +54,11 @@ void exit_with_perror(Pipe &pipe, std::string_view prefix)
 Process::~Process()
 {
     int status = 0;
-    if (pid_ == 0)
+    if (pid_ <= 0)
+        return;
+
+    if (state_ == ProcessState::Exited ||
+        state_ == ProcessState::Terminated)
         return;
 
     if (state_ == ProcessState::Running)
@@ -139,10 +143,12 @@ Process::launch(std::vector<std::string_view> &exec_args)
         }
 
         std::vector<std::string> args_copy;
-        for (auto arg : exec_args)
+        args_copy.reserve(exec_args.size());
+        for (const auto &arg : exec_args)
             args_copy.emplace_back(arg);
 
         std::vector<char *> argv;
+        argv.reserve(args_copy.size() +1);
         for (auto &arg : args_copy)
             argv.push_back(arg.data());
 
@@ -186,7 +192,7 @@ Process::launch(std::vector<std::string_view> &exec_args)
 std::unique_ptr<Process>
 Process::attach(pid_t pid)
 {
-    if (pid == 0)
+    if (pid <= 0)
     {
         Error::send("Invalid PID");
     }

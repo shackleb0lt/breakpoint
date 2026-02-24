@@ -25,8 +25,9 @@
 #ifndef BKPT_LIB_PIPE_HPP
 #define BKPT_LIB_PIPE_HPP
 
-#include <vector>
 #include <string>
+#include <string_view>
+#include <vector>
 
 class Pipe
 {

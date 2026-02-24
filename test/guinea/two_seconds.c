@@ -24,6 +24,8 @@
 
 #define BLOCK_SIZE 512
 
+#ifdef __aarch64__
+
 static inline unsigned long long
 get_tick_frequency(void)
 {
@@ -70,3 +72,42 @@ int main()
 
     return 0;
 }
+
+#else // x86
+
+static inline unsigned long long
+rdtsc_serialized(void)
+{
+    unsigned int lo, hi;
+    __asm__ volatile (
+        "cpuid\n\t"
+        "rdtsc\n\t"
+        : "=a"(lo), "=d"(hi)
+        : "a"(0)
+        : "rbx", "rcx"
+    );
+    return ((unsigned long long)hi << 32) | lo;
+}
+
+int main()
+{
+    int i = 0;
+    unsigned long long block[BLOCK_SIZE];
+
+    unsigned long long start = rdtsc_serialized();
+    unsigned long long end = rdtsc_serialized();
+
+    // With trial and error this runs for 2 seconds
+    while (end - start < 5500000000ULL)
+    {
+        for (i = 1; i < BLOCK_SIZE; i++)
+        {
+            block[i] = end + block[i - 1];
+        }
+        end = rdtsc_serialized();
+    }
+
+    return 0;
+}
+
+#endif

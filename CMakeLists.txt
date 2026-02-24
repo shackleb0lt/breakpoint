@@ -53,8 +53,7 @@ add_executable(bkpt
 target_include_directories(bkpt PRIVATE app)
 
 # The app needs the public headers and the engine library
-target_link_libraries(bkpt PRIVATE breakpoint)
-target_link_libraries(bkpt PRIVATE linenoise)
+target_link_libraries(bkpt PRIVATE linenoise breakpoint)
 target_compile_options(bkpt PRIVATE -Wall -Wextra -Wpedantic)
 
 # ---------------------------------------------------------------------------
@@ -71,12 +70,16 @@ target_compile_options(outta_here PRIVATE -g)
 # target_compile_options(asm_magic PRIVATE -g)
 
 add_executable(test_launch test/test_launch.cpp)
-target_link_libraries(test_launch PRIVATE breakpoint)
-target_link_libraries(test_launch PRIVATE Catch2::Catch2WithMain)
+target_include_directories(test_launch PRIVATE inc test)
+target_link_libraries(test_launch PRIVATE breakpoint Catch2::Catch2WithMain)
 
 add_executable(test_attach test/test_attach.cpp)
-target_link_libraries(test_attach PRIVATE breakpoint)
-target_link_libraries(test_attach PRIVATE Catch2::Catch2WithMain)
+target_include_directories(test_attach PRIVATE inc test)
+target_link_libraries(test_attach PRIVATE breakpoint Catch2::Catch2WithMain)
+
+add_executable(test_commands test/test_commands.cpp app/commands.cpp)
+target_include_directories(test_commands PRIVATE app test)
+target_link_libraries(test_commands PRIVATE Catch2::Catch2WithMain)
 
 # add_executable(test_register test/test_register.c)
 # target_link_libraries(test_register PRIVATE breakpoint)
@@ -86,4 +89,5 @@ add_test(NAME TestGuinea2  COMMAND outta_here)
 
 add_test(NAME TestLaunch   COMMAND test_launch)
 add_test(NAME TestAttach   COMMAND test_attach)
+add_test(NAME TestCommands   COMMAND test_commands)
 # add_test(NAME TestRegister COMMAND test_register)

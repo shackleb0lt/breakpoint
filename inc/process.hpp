@@ -25,9 +25,12 @@
 #ifndef BKPT_LIB_PROCESS_H
 #define BKPT_LIB_PROCESS_H
 
+#include <cstdint>
 #include <memory>
-#include <vector>
 #include <string_view>
+#include <vector>
+
+#include <sys/types.h>
 
 enum class ProcessState
 {

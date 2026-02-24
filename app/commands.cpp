@@ -62,11 +62,18 @@ std::vector<std::string_view>
 tokenize(std::string_view line)
 {
     std::vector<std::string_view> tokens;
+    tokens.reserve(8);
     size_t start = line.find_first_not_of(" \t\r\n");
 
     while (start != std::string_view::npos)
     {
-        size_t end = line.find_first_of(" \t\r\n", start);
+        const size_t end = line.find_first_of(" \t\r\n", start);
+        if (end == std::string_view::npos)
+        {
+            tokens.push_back(line.substr(start));
+            break;
+        }
+
         tokens.push_back(line.substr(start, end - start));
         start = line.find_first_not_of(" \t\r\n", end);
     }
@@ -104,13 +111,13 @@ process_line(std::string_view line)
 {
     auto tokens = tokenize(line);
     if (tokens.empty())
-        return {Action::Quit, tokens};
+        return {Action::None, tokens};
 
     // Start searching from top level table
     const Command *current_table = top_level;
     const Command *result_cmd = nullptr;
 
-    for (auto token : tokens)
+    for (const auto &token : tokens)
     {
         if (!current_table)
             break;

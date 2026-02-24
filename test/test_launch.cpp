@@ -30,13 +30,15 @@
 
 TEST_CASE("Process Launch Logic 1")
 {
-    std::vector<std::string_view> fake =
+    SECTION("Empty exec args should throw")
     {
-        "voldemort"
-    };
+        std::vector<std::string_view> empty;
+        CHECK_THROWS_AS(Process::launch(empty), Error);
+    }
 
     SECTION("Launching invalid binary should throw")
     {
+        std::vector<std::string_view> fake = {"voldemort"};
         CHECK_THROWS_AS(Process::launch(fake), Error);
     }
 }

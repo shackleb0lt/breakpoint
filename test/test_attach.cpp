@@ -33,7 +33,7 @@ pid_t get_unused_pid()
 {
     pid_t unused_pid = 999999;
 
-    while (process_exists(unused_pid) == true && unused_pid > 0)
+    while (process_exists(unused_pid) && unused_pid > 1)
         unused_pid--;
 
     return unused_pid;
@@ -41,9 +41,20 @@ pid_t get_unused_pid()
 
 TEST_CASE("Process Attachment Logic 1")
 {
+    SECTION("Attaching to PID 0 should throw")
+    {
+        CHECK_THROWS_AS(Process::attach(0), Error);
+    }
+
+    SECTION("Attaching to negative PID should throw")
+    {
+        CHECK_THROWS_AS(Process::attach(-1), Error);
+    }
+
     SECTION("Attaching to a non-existent PID should throw")
     {
         pid_t bad_pid = get_unused_pid();
+        REQUIRE(bad_pid > 0);
         CHECK_THROWS_AS(Process::attach(bad_pid), Error);
     }
 

@@ -26,6 +26,7 @@
 #define BKPT_APP_COMMANDS_HPP
 
 #include <string_view>
+#include <utility>
 #include <vector>
 
 enum class Action
@@ -40,6 +41,7 @@ enum class Action
     Continue,
     Help,
     Quit,
+    None,
 };
 
 struct Command
