@@ -9,10 +9,10 @@ set -e
 # 1. Create directory if it doesn't exist
 mkdir -p build
 
-VCPKG_ROOT="${VCPKG_ROOT:$HOME/vcpkg}"
+VCPKG_ROOT="${VCPKG_ROOT:-$HOME/vcpkg}"
 VCPKG_TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
-if [[-f "$VCPKG_TOOLCHAIN"]]; then
+if [[ ! -f "$VCPKG_TOOLCHAIN" ]]; then
     echo "Error: vcpkg toolchain not found at $VCPKG_TOOLCHAIN"
     exit 1
 fi
