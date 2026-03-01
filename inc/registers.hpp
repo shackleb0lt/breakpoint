@@ -28,26 +28,18 @@
 #include <variant>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
+
+#if defined(__aarch64__) 
 #include <asm/ptrace.h>
+#elif defined(__x86_64__)
+#include <sys/user.h>
+#endif
 
 using RegisterValue = std::variant
     <uint8_t, uint16_t, uint32_t, uint64_t, __uint128_t>;
 
-class Registers
-{
-    private:
-        struct user_pt_regs regs{};
-        struct user_fpsimd_state fp_regs{};
-        friend class Process;
-        Registers() {};
-
-    public:
-        Registers(const Registers&) = delete;
-        Registers& operator=(const Registers&) = delete;
-
-};
-
-#ifdef __aarch64__
+#if defined(__aarch64__)
 
 enum class RegisterID
 {
@@ -89,9 +81,7 @@ enum class RegisterID
     REG64_PC, REG64_SP, REG64_PSTATE, REG32_FPSR, REG32_FPCR
 };
 
-#endif /* __aarch64__ */
-
-#ifdef __x86__
+#elif defined(__x86_64__)
 
 enum class RegisterID
 {
@@ -168,6 +158,36 @@ enum class RegisterID
     REGFP_XMM15
 };
 
-#endif /*__x86__*/
+#endif
+
+class Registers
+{
+    private:
+#if defined(__aarch64__) 
+        struct user_pt_regs gpr_{};
+        struct user_fpsimd_state fpr_{};
+#elif defined(__x86_64__)
+        struct user_regs_struct gpr_{};
+        struct user_fpregs_struct fpr_{};
+#endif
+
+        friend class Process;
+        Registers() = default;
+
+    public:
+        Registers(const Registers&) = delete;
+        Registers& operator=(const Registers&) = delete;
+
+        void* gpr_ptr() { return &gpr_;}
+        void* fpr_ptr() { return &fpr_;}
+        std::size_t gpr_size() { return sizeof(gpr_);}
+        std::size_t fpr_size() { return sizeof(fpr_);}
+
+        RegisterValue read(std::string_view reg_name);
+        RegisterValue read(RegisterID reg_id);
+
+        void write(std::string_view reg_name, RegisterValue val);
+        void write(std::string_view reg_name, std::string_view val_str);
+};
 
 #endif

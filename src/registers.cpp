@@ -25,6 +25,25 @@
 #include "registers.hpp"
 
 #include <stdexcept>
+#include <cstring>
+
+enum class RegisterType
+{
+    RegGPR,
+    RegFPR,
+    Both
+};
+
+struct RegisterInfo
+{
+    RegisterID id;
+    std::string_view name;
+    std::size_t size;
+    std::size_t offset;
+    RegisterType type;
+};
+
+#if defined(__aarch64__)
 
 // Macros to keep the table readable and maintainable
 #define REG_GPR_X(i) {RegisterID::REG64_X##i, "x"#i, 8, (i * 8), RegisterType::RegGPR}
@@ -91,17 +110,16 @@ const struct RegisterInfo g_register_table[] =
     {RegisterID::REG64_SP,  "sp",  8, (31 * 8), RegisterType::RegGPR},
     {RegisterID::REG64_PC,  "pc",  8, (32 * 8), RegisterType::RegGPR},
     {RegisterID::REG32_FPSR,  "fpsr",  4, offsetof(struct user_fpsimd_state, fpsr), RegisterType::RegFPR},
-    {RegisterID::REG32_FPCR,  "fpsr",  4, offsetof(struct user_fpsimd_state, fpcr), RegisterType::RegFPR}
+    {RegisterID::REG32_FPCR,  "fpcr",  4, offsetof(struct user_fpsimd_state, fpcr), RegisterType::RegFPR}
 };
 
 const std::size_t g_register_table_size =
-    sizeof(g_register_table)/sizeof(g_register_table[0]);
+    sizeof(g_register_table) / sizeof(g_register_table[0]);
 
-const RegisterInfo*
+const RegisterInfo *
 get_register_info(std::string_view name)
 {
-    std::size_t curr = 0;
-    for (; curr < g_register_table_size; curr++)
+    for (std::size_t curr = 0; curr < g_register_table_size; curr++)
     {
         if (name == g_register_table[curr].name)
             return &g_register_table[curr];
@@ -110,16 +128,211 @@ get_register_info(std::string_view name)
     throw std::invalid_argument("Invalid register name " + std::string(name));
 }
 
-const RegisterInfo*
+const RegisterInfo *
 get_register_info(RegisterID id)
 {
-    std::size_t curr = 0;
-    for (; curr < g_register_table_size; curr++)
+    for (std::size_t curr = 0; curr < g_register_table_size; curr++)
     {
         if (id == g_register_table[curr].id)
             return &g_register_table[curr];
     }
 
-    throw std::logic_error("Get register with id reached end of function"); 
+    throw std::logic_error("Register ID not found in table");
 }
 
+#elif defined(__x86__)
+
+const RegisterInfo*
+get_register_info(std::string_view name)
+{
+    (void) name;
+    throw std::runtime_error("Register access not implemented for x86");
+}
+
+const RegisterInfo*
+get_register_info(RegisterID id)
+{
+    (void) id;
+    throw std::runtime_error("Register access not implemented for x86")
+}
+#endif
+
+std::uint8_t *
+register_offset(const RegisterInfo *info, Registers& reg_state)
+{
+    std::uint8_t *offset = nullptr;
+
+    if (info->type == RegisterType::RegGPR)
+    {
+        offset = static_cast<std::uint8_t *>(reg_state.gpr_ptr());
+        return (offset + info->offset);
+    }
+    else if (info->type == RegisterType::RegFPR)
+    {
+        offset = static_cast<std::uint8_t *>(reg_state.fpr_ptr());
+        return (offset + info->offset);
+    }
+    throw std::logic_error("Invalide register type in register_offset");
+}
+
+RegisterValue
+read_commmon(const RegisterInfo *info, std::uint8_t *src_addr)
+{
+    switch (info->size)
+    {
+        case 1:
+        {
+            uint8_t val;
+            std::memcpy(&val, src_addr, sizeof(val));
+            return val;
+        }
+        case 2:
+        {
+            uint16_t val;
+            std::memcpy(&val, src_addr, sizeof(val));
+            return val;
+        }
+        case 4:
+        {
+            uint32_t val;
+            std::memcpy(&val, src_addr, sizeof(val));
+            return val;
+        }
+        case 8:
+        {
+            uint64_t val;
+            std::memcpy(&val, src_addr, sizeof(val));
+            return val;
+        }
+        case 16:
+        {
+            __uint128_t val;
+            std::memcpy(&val, src_addr, sizeof(val));
+            return val;
+        }
+        default:
+        {
+            throw std::logic_error("Register " +
+                std::string(info->name) + " has invalid size");
+            break;
+        }
+    }
+    
+}
+
+RegisterValue
+parse_register_token(const RegisterInfo* info, std::string_view token)
+{
+    if (token.find('.') != std::string_view::npos)
+    {
+        __uint128_t result = 0;
+        
+        if (token.back() == 'f' || token.back() == 'F')
+        {
+            if (info->size < 4)
+                throw std::runtime_error("Register too small for float");
+            
+            float f_val = std::stof(std::string(token.substr(0, token.size() - 1)));
+            std::memcpy(&result, &f_val, sizeof(float));
+        }
+        else
+        {
+            if (info->size < 8)
+                throw std::runtime_error("Register too small for double");
+            
+            double d_val = std::stod(std::string(token));
+            std::memcpy(&result, &d_val, sizeof(double));
+        }
+        
+        if (info->size == 16) return result;
+        if (info->size == 8)  return static_cast<uint64_t>(result);
+        if (info->size == 4)  return static_cast<uint32_t>(result);
+    }
+
+    uint64_t val = 0;
+    std::string s_token(token);
+    bool is_hex = (token.size() > 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X'));
+
+    try
+    {
+        if (is_hex)
+        {
+            val = std::stoull(s_token, nullptr, 16);
+        }
+        else
+        {
+            val = std::stoull(s_token, nullptr, 10);
+        }
+    }
+    catch (...)
+    {
+        throw std::runtime_error("Invalid numeric token: " + s_token);
+    }
+
+    switch (info->size)
+    {
+        case 1:
+            if (val > UINT8_MAX)
+                throw std::runtime_error("Value too large for 8-bit register");
+            return static_cast<uint8_t>(val);
+        case 2:
+            if (val > UINT16_MAX)
+                throw std::runtime_error("Value too large for 16-bit register");
+            return static_cast<uint16_t>(val);
+        case 4:
+            if (val > UINT32_MAX)
+                throw std::runtime_error("Value too large for 32-bit register");
+            return static_cast<uint32_t>(val);
+        case 8:
+            return val;
+        case 16:
+            return static_cast<__uint128_t>(val);
+        default:
+            throw std::runtime_error("Unsupported register size");
+    }
+}
+
+RegisterValue Registers::read(std::string_view reg_name)
+{
+    const RegisterInfo *info = get_register_info(reg_name);
+    return read_commmon(info, register_offset(info, *this));
+}
+
+RegisterValue Registers::read(RegisterID reg_id)
+{
+    const RegisterInfo *info = get_register_info(reg_id);
+    return read_commmon(info, register_offset(info, *this));
+}
+
+void Registers::write(std::string_view reg_name, RegisterValue val)
+{
+    const RegisterInfo *info = get_register_info(reg_name);
+    auto func = [&](auto &&arg) -> void
+    {
+        using T = std::decay_t<decltype(arg)>;
+        if (sizeof(T) > info->size)
+            throw std::invalid_argument("Size mismatch for register "
+            + std::string(info->name));
+
+        std::memcpy(register_offset(info, *this), &arg, sizeof(T));
+    };
+
+    std::visit(func, val);
+}
+
+void Registers::write(std::string_view reg_name, std::string_view val_str)
+{
+    const RegisterInfo *info = get_register_info(reg_name);
+    RegisterValue val = parse_register_token(info, val_str);
+    auto func = [&](auto &&arg) -> void
+    {
+        using T = std::decay_t<decltype(arg)>;
+        if (sizeof(T) > info->size)
+            throw std::invalid_argument("Size mismatch for register "
+            + std::string(info->name));
+
+        std::memcpy(register_offset(info, *this), &arg, sizeof(T));
+    };
+
+    std::visit(func, val);
+}

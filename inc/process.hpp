@@ -25,15 +25,12 @@
 #ifndef BKPT_LIB_PROCESS_H
 #define BKPT_LIB_PROCESS_H
 
-#include <cstdint>
 #include <memory>
-#include <string_view>
 #include <vector>
-
+#include <string_view>
 #include <sys/types.h>
-#include <variant>
 
-#include "register_info.hpp"
+#include "registers.hpp"
 
 enum class ProcessState : uint8_t
 {
@@ -78,7 +75,7 @@ private:
     pid_t pid_ = 0;
     bool kill_on_end_ = true;
     ProcessState state_ = ProcessState::Init;
-    Registers data_;
+    Registers reg_state_;
 };
 
 #endif

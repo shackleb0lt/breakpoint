@@ -23,11 +23,9 @@
  */
 
 #include "process.hpp"
-#include "registers.hpp"
 #include "pipe.hpp"
 #include "error.hpp"
 
-#include <cstring>
 #include <csignal>
 #include <string>
 #include <charconv>
@@ -229,17 +227,15 @@ Process::attach(pid_t pid)
 void Process::get_registers()
 {
     struct iovec iov;
-    iov.iov_base = &(data_.regs);
-    iov.iov_len = sizeof(data_.regs);
-
+    iov.iov_base = reg_state_.gpr_ptr();
+    iov.iov_len = reg_state_.gpr_size();
     if (ptrace(PTRACE_GETREGSET, pid_, NT_PRSTATUS, &iov) < 0)
     {
         Error::send_errno("Failed to read general purpose registers");
     }
 
-    iov.iov_base = &(data_.fp_regs);
-    iov.iov_len = sizeof(data_.fp_regs);
-
+    iov.iov_base = reg_state_.fpr_ptr();
+    iov.iov_len = reg_state_.fpr_size();
     if (ptrace(PTRACE_GETREGSET, pid_, NT_FPREGSET, &iov) < 0)
     {
         Error::send_errno("Failed to read vector registers");
@@ -249,217 +245,37 @@ void Process::get_registers()
 void Process::set_registers()
 {
     struct iovec iov;
-    iov.iov_base = &(data_.regs);
-    iov.iov_len = sizeof(data_.regs);
+    iov.iov_base = reg_state_.gpr_ptr();
+    iov.iov_len = reg_state_.gpr_size();
     if (ptrace(PTRACE_SETREGSET, pid_, NT_PRSTATUS, &iov) < 0)
     {
         Error::send_errno("Failed to read general purpose registers");
     }
 
-    iov.iov_base = &(data_.fp_regs);
-    iov.iov_len = sizeof(data_.fp_regs);
+    iov.iov_base = reg_state_.fpr_ptr();
+    iov.iov_len = reg_state_.fpr_size();
     if (ptrace(PTRACE_SETREGSET, pid_, NT_FPREGSET, &iov) < 0)
     {
         Error::send_errno("Failed to read vector registers");
     }
 }
 
-static RegisterValue
-read_commmon(const RegisterInfo *info, std::uint8_t *src_addr)
-{
-    switch (info->size)
-    {
-        case 1:
-        {
-            uint8_t val;
-            std::memcpy(&val, src_addr, sizeof(val));
-            return val;
-        }
-        case 2:
-        {
-            uint16_t val;
-            std::memcpy(&val, src_addr, sizeof(val));
-            return val;
-        }
-        case 4:
-        {
-            uint32_t val;
-            std::memcpy(&val, src_addr, sizeof(val));
-            return val;
-        }
-        case 8:
-        {
-            uint64_t val;
-            std::memcpy(&val, src_addr, sizeof(val));
-            return val;
-        }
-        case 16:
-        {
-            __uint128_t val;
-            std::memcpy(&val, src_addr, sizeof(val));
-            return val;
-        }
-        default:
-        {
-            throw std::logic_error(
-                "Register "+ std::string(info->name) + " has invalid size");
-            break;
-        }
-    }
-    
-}
-
 RegisterValue Process::read_register(std::string_view reg_name)
 {
-    const RegisterInfo *info = get_register_info(reg_name);
-
-    std::uint8_t *src_addr = nullptr;
-    if (info->type == RegisterType::RegGPR)
-        src_addr = reinterpret_cast<std::uint8_t *>(&(data_.regs));
-    else if (info->type == RegisterType::RegFPR)
-        src_addr = reinterpret_cast<std::uint8_t *>(&(data_.fp_regs));
-
-    src_addr += info->offset;
-
-    return read_commmon(info, src_addr);
+    return reg_state_.read(reg_name);
 }
 
 RegisterValue Process::read_register(RegisterID reg_id)
 {
-    const RegisterInfo *info = get_register_info(reg_id);
-
-    std::uint8_t *src_addr = nullptr;
-    if (info->type == RegisterType::RegGPR)
-        src_addr = reinterpret_cast<std::uint8_t *>(&(data_.regs));
-    else if (info->type == RegisterType::RegFPR)
-        src_addr = reinterpret_cast<std::uint8_t *>(&(data_.fp_regs));
-
-    src_addr += info->offset;
-    return read_commmon(info, src_addr);
-}
-
-static RegisterValue
-parse_register_token(std::string_view token, const RegisterInfo* info)
-{
-    if (token.find('.') != std::string_view::npos)
-    {
-        __uint128_t result = 0;
-        
-        if (token.back() == 'f' || token.back() == 'F')
-        {
-            if (info->size < 4)
-                throw std::runtime_error("Register too small for float");
-            
-            float f_val = std::stof(std::string(token.substr(0, token.size() - 1)));
-            std::memcpy(&result, &f_val, sizeof(float));
-        }
-        else
-        {
-            if (info->size < 8)
-                throw std::runtime_error("Register too small for double");
-            
-            double d_val = std::stod(std::string(token));
-            std::memcpy(&result, &d_val, sizeof(double));
-        }
-        
-        if (info->size == 16) return result;
-        if (info->size == 8)  return static_cast<uint64_t>(result);
-        if (info->size == 4)  return static_cast<uint32_t>(result);
-    }
-
-    uint64_t val = 0;
-    std::string s_token(token);
-    bool is_hex = (token.size() > 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X'));
-
-    try
-    {
-        if (is_hex)
-        {
-            val = std::stoull(s_token, nullptr, 16);
-        }
-        else
-        {
-            val = std::stoull(s_token, nullptr, 10);
-        }
-    }
-    catch (...)
-    {
-        throw std::runtime_error("Invalid numeric token: " + s_token);
-    }
-
-    switch (info->size)
-    {
-        case 1:
-            if (val > UINT8_MAX)
-                throw std::runtime_error("Value too large for 8-bit register");
-            return static_cast<uint8_t>(val);
-        case 2:
-            if (val > UINT16_MAX)
-                throw std::runtime_error("Value too large for 16-bit register");
-            return static_cast<uint16_t>(val);
-        case 4:
-            if (val > UINT32_MAX)
-                throw std::runtime_error("Value too large for 32-bit register");
-            return static_cast<uint32_t>(val);
-        case 8:
-            return val;
-        case 16:
-            return static_cast<__uint128_t>(val);
-        default:
-            throw std::runtime_error("Unsupported register size");
-    }
+    return reg_state_.read(reg_id);
 }
 
 void Process::write_register(std::string_view reg_name, std::string_view val_str)
 {
-    const RegisterInfo *info = get_register_info(reg_name);
-
-    std::uint8_t *dest_addr = nullptr;
-    if (info->type == RegisterType::RegGPR)
-        dest_addr = reinterpret_cast<std::uint8_t *>(&(data_.regs));
-    else if (info->type == RegisterType::RegFPR)
-        dest_addr = reinterpret_cast<std::uint8_t *>(&(data_.fp_regs));
-    dest_addr += info->offset;
-
-    RegisterValue val = parse_register_token(val_str, info);
-
-    std::visit(
-        [&](auto &&arg)
-        {
-            using T = std::decay_t<decltype(arg)>;
-
-            if (sizeof(T) < info->size)
-            {
-                throw std::invalid_argument("Size mismatch for register " + std::string(reg_name));
-            }
-
-            std::memcpy(dest_addr, &arg, sizeof(T));
-        },
-        val);
+    reg_state_.write(reg_name, val_str);
 }
 
 void Process::write_register(std::string_view reg_name, RegisterValue val)
 {
-    const RegisterInfo *info = get_register_info(reg_name);
-
-    std::uint8_t *dest_addr = nullptr;
-    if (info->type == RegisterType::RegGPR)
-        dest_addr = reinterpret_cast<std::uint8_t *>(&(data_.regs));
-    else if (info->type == RegisterType::RegFPR)
-        dest_addr = reinterpret_cast<std::uint8_t *>(&(data_.fp_regs));
-    dest_addr += info->offset;
-
-    std::visit(
-        [&](auto &&arg)
-        {
-            using T = std::decay_t<decltype(arg)>;
-
-            if (sizeof(T) < info->size)
-            {
-                throw std::invalid_argument("Size mismatch for register " + std::string(reg_name));
-            }
-
-            std::memcpy(dest_addr, &arg, sizeof(T));
-        },
-        val);
+    reg_state_.write(reg_name, val);
 }
