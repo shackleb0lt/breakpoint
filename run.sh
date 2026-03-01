@@ -29,7 +29,7 @@ else
 fi
 
 
-cmake -S . -B build -G $CMAKE_GENERATOR \
+cmake -S . -B build -G "$CMAKE_GENERATOR" \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_TOOLCHAIN_FILE="$VCPKG_TOOLCHAIN"
 
