@@ -31,8 +31,11 @@
 #include <vector>
 
 #include <sys/types.h>
+#include <variant>
 
-enum class ProcessState
+#include "register_info.hpp"
+
+enum class ProcessState : uint8_t
 {
     Init = 0,
     Stopped,
@@ -62,12 +65,20 @@ public:
     pid_t get_pid() { return pid_; }
     ProcessState get_state() { return state_; }
 
+    RegisterValue read_register(std::string_view reg_name);
+    RegisterValue read_register(RegisterID reg_id);
+    void write_register(std::string_view reg_name, RegisterValue val);
+    void write_register(std::string_view reg_name, std::string_view val);
+
 private:
     Process(pid_t pid, bool kill_on_end) : pid_(pid), kill_on_end_(kill_on_end) {}
+    void get_registers();
+    void set_registers();
 
     pid_t pid_ = 0;
     bool kill_on_end_ = true;
     ProcessState state_ = ProcessState::Init;
+    Registers data_;
 };
 
 #endif

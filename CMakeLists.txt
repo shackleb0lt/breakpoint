@@ -32,6 +32,7 @@ target_include_directories(linenoise PUBLIC lib/linenoise)
 add_library(breakpoint STATIC
     src/process.cpp
     src/pipe.cpp
+    src/registers.cpp
 )
 
 # Include directories:

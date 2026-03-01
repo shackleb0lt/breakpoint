@@ -24,14 +24,18 @@
 
 #include <cstdlib>
 #include <iostream>
-#include <memory>
-#include <stdexcept>
 #include <string>
+
+#include <cstring>
+#include <iomanip>
+#include <type_traits>
 
 #include "linenoise.h"
 #include "commands.hpp"
 #include "error.hpp"
 #include "process.hpp"
+
+using ProcessPtr = std::unique_ptr<Process>;
 
 void print_usage(std::string_view exe_name)
 {
@@ -39,7 +43,71 @@ void print_usage(std::string_view exe_name)
               << "Usage: " << exe_name << "<executable-file> [args]" << std::endl;
 }
 
-bool handle_command(std::string_view line, std::unique_ptr<Process> &proc)
+void print_stop_reason(ProcessState state, std::uint8_t ret)
+{
+    switch (state)
+    {
+        case ProcessState::Exited:
+            std::cout << "Process exited with status "
+                      << static_cast<int>(ret) << std::endl;
+            break;
+        case ProcessState::Terminated:
+            std::cout << "Process terminated with signal "
+                      << sigabbrev_np(ret) << std::endl;
+            break;
+        case ProcessState::Stopped:
+            std::cout << "Process stopped with signal "
+                      << sigabbrev_np(ret) << std::endl;
+            break;
+        default:
+            break;
+    }
+}
+
+void display_register(std::string_view name, const RegisterValue& val)
+{
+    std::ios old_state(nullptr);
+    old_state.copyfmt(std::cout);
+    std::cout << std::left << std::setw(6) << name << ": ";
+
+    std::visit([](auto&& arg)
+    {
+        using T = std::decay_t<decltype(arg)>;
+
+        if constexpr (std::is_same_v<T, __uint128_t>)
+        {
+            uint64_t high = static_cast<uint64_t>(arg >> 64);
+            uint64_t low  = static_cast<uint64_t>(arg);
+            uint32_t low_32 = static_cast<uint32_t>(low);
+
+            // Re-interpret the lower 64 bits as double and lower 32 as float
+            // We use bit_cast to look at the same bits as a different type
+            double as_double;
+            std::memcpy(&as_double, &low, sizeof(double));
+
+            float as_float;
+            std::memcpy(&as_float, &low_32, sizeof(float));
+    
+            std::cout << "0x" << std::hex << std::setfill('0') << std::internal 
+                      << std::setw(16) << high << std::setw(16) << low 
+                      << std::dec << " | dbl: " << as_double << " | flt: " << as_float;
+        } 
+        else
+        {
+            int width = sizeof(T) * 2;
+            using SignedT = std::make_signed_t<T>;
+
+            std::cout << "0x" << std::hex << std::setfill('0') << std::internal
+                      << std::setw(width) << static_cast<uint64_t>(arg)
+                      << std::dec << " (u:" << static_cast<uint64_t>(arg) 
+                      << " s:" << static_cast<int64_t>(static_cast<SignedT>(arg)) << ")";
+        }
+    }, val);
+    std::cout << std::endl;
+    std::cout.copyfmt(old_state);
+}
+
+bool handle_command(std::string_view line, ProcessPtr &proc)
 {
     auto [action, tokens] = process_line(line);
 
@@ -72,8 +140,36 @@ bool handle_command(std::string_view line, std::unique_ptr<Process> &proc)
         if (action == Action::Continue)
         {
             proc->resume();
-            proc->wait();
+            std::uint8_t ret =  proc->wait();
+            print_stop_reason(proc->get_state(), ret);
         }
+        else if (action == Action::ReadReg)
+        {
+            RegisterValue val = proc->read_register(tokens[2]);
+            display_register(tokens[2], val);
+        }
+        else if (action == Action::ReadRegGPR)
+        {
+            ;
+        }
+        else if (action == Action::ReadRegAll)
+        {
+            ;
+        }
+        else if (action == Action::WriteReg)
+        {
+            proc->write_register(tokens[2], tokens[3]);
+        }
+    }
+    catch(const std::invalid_argument& err)
+    {
+        std::cout << "Error: "<< err.what() << std::endl;
+        return true;
+    }
+    catch(const std::logic_error &err)
+    {
+        std::cout << "Internal Error: "<< err.what() << std::endl;
+        return false;
     }
     catch (const Error &err)
     {
@@ -85,7 +181,7 @@ bool handle_command(std::string_view line, std::unique_ptr<Process> &proc)
     return true;
 }
 
-void cli_repl(std::unique_ptr<Process> &proc)
+void cli_repl(ProcessPtr &proc)
 {
     char *raw_line = NULL;
     std::cout << "Welcome to breakpoint!" << std::endl;
@@ -132,7 +228,7 @@ int main(int argc, char *argv[])
             return 0;
         }
 
-        std::unique_ptr<Process> proc;
+        ProcessPtr proc;
 
         if (args[1] == "-p")
         {
