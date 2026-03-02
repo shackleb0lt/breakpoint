@@ -14,6 +14,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Catch2 3 REQUIRED)
+find_package(fmt CONFIG REQUIRED)
 
 # ---------------------------------------------------------------------------
 # 1 External Library: linenoise
@@ -54,7 +55,7 @@ add_executable(bkpt
 target_include_directories(bkpt PRIVATE app)
 
 # The app needs the public headers and the engine library
-target_link_libraries(bkpt PRIVATE linenoise breakpoint)
+target_link_libraries(bkpt PRIVATE linenoise breakpoint fmt::fmt)
 target_compile_options(bkpt PRIVATE -Wall -Wextra -Wpedantic)
 
 # ---------------------------------------------------------------------------

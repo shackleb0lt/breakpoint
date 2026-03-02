@@ -24,14 +24,27 @@
 
 #include "registers.hpp"
 
-#include <stdexcept>
+#include <charconv>
 #include <cstring>
+#include <stdexcept>
+#include <string>
 
 enum class RegisterType
 {
     RegGPR,
     RegFPR,
     Both
+};
+
+enum class ValueType
+{
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    UInt128,
+    Float,
+    Double,
 };
 
 struct RegisterInfo
@@ -41,20 +54,21 @@ struct RegisterInfo
     std::size_t size;
     std::size_t offset;
     RegisterType type;
+    ValueType valtype;
 };
 
 #if defined(__aarch64__)
 
 // Macros to keep the table readable and maintainable
-#define REG_GPR_X(i) {RegisterID::REG64_X##i, "x"#i, 8, (i * 8), RegisterType::RegGPR}
-#define REG_GPR_W(i) {RegisterID::REG32_W##i, "w"#i, 4, (i * 8), RegisterType::RegGPR}
+#define REG_GPR_X(i) {RegisterID::REG64_X##i, "x"#i, 8, (i * 8), RegisterType::RegGPR, ValueType::UInt64}
+#define REG_GPR_W(i) {RegisterID::REG32_W##i, "w"#i, 4, (i * 8), RegisterType::RegGPR, ValueType::UInt32}
 
 
-#define REG_VEC_Q(i) {RegisterID::REG128_Q##i, "q"#i, 16, (i * 16), RegisterType::RegFPR}
-#define REG_VEC_D(i) {RegisterID::REG64_D##i,  "d"#i, 8,  (i * 16), RegisterType::RegFPR}
-#define REG_VEC_S(i) {RegisterID::REG32_S##i,  "s"#i, 4,  (i * 16), RegisterType::RegFPR}
-#define REG_VEC_H(i) {RegisterID::REG16_H##i,  "h"#i, 2,  (i * 16), RegisterType::RegFPR}
-#define REG_VEC_B(i) {RegisterID::REG8_B##i,   "b"#i, 1,  (i * 16), RegisterType::RegFPR}
+#define REG_VEC_V(i) {RegisterID::REG128_V##i, "v"#i, 16, (i * 16), RegisterType::RegFPR, ValueType::UInt128}
+#define REG_VEC_D(i) {RegisterID::REG64_D##i,  "d"#i, 8,  (i * 16), RegisterType::RegFPR, ValueType::Double}
+#define REG_VEC_S(i) {RegisterID::REG32_S##i,  "s"#i, 4,  (i * 16), RegisterType::RegFPR, ValueType::Float}
+#define REG_VEC_H(i) {RegisterID::REG16_H##i,  "h"#i, 2,  (i * 16), RegisterType::RegFPR, ValueType::UInt16}
+#define REG_VEC_B(i) {RegisterID::REG8_B##i,   "b"#i, 1,  (i * 16), RegisterType::RegFPR, ValueType::UInt8}
 
 const struct RegisterInfo g_register_table[] =
 {
@@ -77,10 +91,10 @@ const struct RegisterInfo g_register_table[] =
     REG_GPR_W(30),
 
     // --- 128-bit Quadword SIMD (Q-registers) ---
-    REG_VEC_Q(0),  REG_VEC_Q(1),  REG_VEC_Q(2),  REG_VEC_Q(3),  REG_VEC_Q(4),  REG_VEC_Q(5),  REG_VEC_Q(6),  REG_VEC_Q(7),
-    REG_VEC_Q(8),  REG_VEC_Q(9),  REG_VEC_Q(10), REG_VEC_Q(11), REG_VEC_Q(12), REG_VEC_Q(13), REG_VEC_Q(14), REG_VEC_Q(15),
-    REG_VEC_Q(16), REG_VEC_Q(17), REG_VEC_Q(18), REG_VEC_Q(19), REG_VEC_Q(20), REG_VEC_Q(21), REG_VEC_Q(22), REG_VEC_Q(23),
-    REG_VEC_Q(24), REG_VEC_Q(25), REG_VEC_Q(26), REG_VEC_Q(27), REG_VEC_Q(28), REG_VEC_Q(29), REG_VEC_Q(30), REG_VEC_Q(31),
+    REG_VEC_V(0),  REG_VEC_V(1),  REG_VEC_V(2),  REG_VEC_V(3),  REG_VEC_V(4),  REG_VEC_V(5),  REG_VEC_V(6),  REG_VEC_V(7),
+    REG_VEC_V(8),  REG_VEC_V(9),  REG_VEC_V(10), REG_VEC_V(11), REG_VEC_V(12), REG_VEC_V(13), REG_VEC_V(14), REG_VEC_V(15),
+    REG_VEC_V(16), REG_VEC_V(17), REG_VEC_V(18), REG_VEC_V(19), REG_VEC_V(20), REG_VEC_V(21), REG_VEC_V(22), REG_VEC_V(23),
+    REG_VEC_V(24), REG_VEC_V(25), REG_VEC_V(26), REG_VEC_V(27), REG_VEC_V(28), REG_VEC_V(29), REG_VEC_V(30), REG_VEC_V(31),
 
     // --- 64-bit Doubleword SIMD (D-registers) ---
     REG_VEC_D(0),  REG_VEC_D(1),  REG_VEC_D(2),  REG_VEC_D(3),  REG_VEC_D(4),  REG_VEC_D(5),  REG_VEC_D(6),  REG_VEC_D(7),
@@ -107,10 +121,10 @@ const struct RegisterInfo g_register_table[] =
     REG_VEC_B(24), REG_VEC_B(25), REG_VEC_B(26), REG_VEC_B(27), REG_VEC_B(28), REG_VEC_B(29), REG_VEC_B(30), REG_VEC_B(31),
 
     // --- Special Purpose Registers ---
-    {RegisterID::REG64_SP,  "sp",  8, (31 * 8), RegisterType::RegGPR},
-    {RegisterID::REG64_PC,  "pc",  8, (32 * 8), RegisterType::RegGPR},
-    {RegisterID::REG32_FPSR,  "fpsr",  4, offsetof(struct user_fpsimd_state, fpsr), RegisterType::RegFPR},
-    {RegisterID::REG32_FPCR,  "fpcr",  4, offsetof(struct user_fpsimd_state, fpcr), RegisterType::RegFPR}
+    {RegisterID::REG64_SP,  "sp",  8, (31 * 8), RegisterType::RegGPR, ValueType::UInt64},
+    {RegisterID::REG64_PC,  "pc",  8, (32 * 8), RegisterType::RegGPR, ValueType::UInt64},
+    {RegisterID::REG32_FPSR,  "fpsr",  4, offsetof(struct user_fpsimd_state, fpsr), RegisterType::RegFPR, ValueType::UInt32},
+    {RegisterID::REG32_FPCR,  "fpcr",  4, offsetof(struct user_fpsimd_state, fpcr), RegisterType::RegFPR, ValueType::UInt32}
 };
 
 const std::size_t g_register_table_size =
@@ -140,22 +154,25 @@ get_register_info(RegisterID id)
     throw std::logic_error("Register ID not found in table");
 }
 
-#elif defined(__x86__)
+#elif defined(__x86_64__)
 
 const RegisterInfo*
 get_register_info(std::string_view name)
 {
     (void) name;
-    throw std::runtime_error("Register access not implemented for x86");
+    throw std::invalid_argument("Register access not implemented for x86");
 }
 
 const RegisterInfo*
 get_register_info(RegisterID id)
 {
     (void) id;
-    throw std::runtime_error("Register access not implemented for x86")
+    throw std::invalid_argument("Register access not implemented for x86");
 }
 #endif
+
+namespace
+{
 
 std::uint8_t *
 register_offset(const RegisterInfo *info, Registers& reg_state)
@@ -172,41 +189,53 @@ register_offset(const RegisterInfo *info, Registers& reg_state)
         offset = static_cast<std::uint8_t *>(reg_state.fpr_ptr());
         return (offset + info->offset);
     }
-    throw std::logic_error("Invalide register type in register_offset");
+    throw std::logic_error("Invalid register type in register_offset");
 }
 
 RegisterValue
 read_commmon(const RegisterInfo *info, std::uint8_t *src_addr)
 {
-    switch (info->size)
+    switch (info->valtype)
     {
-        case 1:
+        case ValueType::UInt8:
         {
             uint8_t val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
-        case 2:
+        case ValueType::UInt16:
         {
             uint16_t val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
-        case 4:
+        case ValueType::UInt32:
         {
             uint32_t val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
-        case 8:
+        case ValueType::UInt64:
         {
             uint64_t val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
-        case 16:
+        case ValueType::UInt128:
         {
             __uint128_t val;
+            std::memcpy(&val, src_addr, sizeof(val));
+            return val;
+        }
+        case ValueType::Float:
+        {
+            float val;
+            std::memcpy(&val, src_addr, sizeof(val));
+            return val;
+        }
+        case ValueType::Double:
+        {
+            double val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
@@ -220,76 +249,128 @@ read_commmon(const RegisterInfo *info, std::uint8_t *src_addr)
     
 }
 
+void copy_to_cstr(std::string_view token, char buf[256])
+{
+    if (token.size() >= 256)
+        throw std::invalid_argument("Token too long");
+    std::memcpy(buf, token.data(), token.size());
+    buf[token.size()] = '\0';
+}
+
 RegisterValue
 parse_register_token(const RegisterInfo* info, std::string_view token)
 {
-    if (token.find('.') != std::string_view::npos)
+    if (token.empty())
+        throw std::invalid_argument("Empty register value");
+
+    const bool looks_float = token.find('.') != std::string_view::npos
+        || token.back() == 'f' || token.back() == 'F';
+
+
+    switch (info->valtype)
     {
-        __uint128_t result = 0;
-        
-        if (token.back() == 'f' || token.back() == 'F')
+        case ValueType::Float:
         {
-            if (info->size < 4)
-                throw std::runtime_error("Register too small for float");
+            char buf[256];
+            copy_to_cstr((token.back() == 'f' || token.back() == 'F')
+                ? token.substr(0, token.size() - 1) : token, buf);
+            try
+            {
+                return std::stof(buf);
+            }
+            catch (const std::invalid_argument&)
+            {
+                throw std::invalid_argument("Invalid float: " + std::string(token));
+            }
+            catch (const std::out_of_range&)
+            {
+                throw std::invalid_argument("Float out of range: " + std::string(token));
+            }
+        }
+        case ValueType::Double:
+        {
+            char buf[256];
+            copy_to_cstr(token, buf);
+            try
+            {
+                return std::stod(buf);
+            }
+            catch (const std::invalid_argument&)
+            {
+                throw std::invalid_argument("Invalid double: " + std::string(token));
+            }
+            catch (const std::out_of_range&)
+            {
+                throw std::invalid_argument("Double out of range: " + std::string(token));
+            }
+        }
+        case ValueType::UInt8:
+        case ValueType::UInt16:
+        case ValueType::UInt32:
+        case ValueType::UInt64:
+        case ValueType::UInt128:
+        {
+            if (looks_float)
+                throw std::invalid_argument("Expected integer value for register " + std::string(info->name));
             
-            float f_val = std::stof(std::string(token.substr(0, token.size() - 1)));
-            std::memcpy(&result, &f_val, sizeof(float));
-        }
-        else
-        {
-            if (info->size < 8)
-                throw std::runtime_error("Register too small for double");
-            
-            double d_val = std::stod(std::string(token));
-            std::memcpy(&result, &d_val, sizeof(double));
-        }
-        
-        if (info->size == 16) return result;
-        if (info->size == 8)  return static_cast<uint64_t>(result);
-        if (info->size == 4)  return static_cast<uint32_t>(result);
-    }
+            bool negate = false;            
+            int base = 10;
+            if (token[0] == '-')
+            {
+                negate = true;
+                token.remove_prefix(1);
+            }
+            else if (token.size() > 2 && token[0] == '0' &&
+                    (token[1] == 'x' || token[1] == 'X'))
+            {
+                base = 16;
+                token.remove_prefix(2);
+            }
+            else if (token.size() > 1 && token[0] == '0')
+            {
+                base = 8;
+            }
 
-    uint64_t val = 0;
-    std::string s_token(token);
-    bool is_hex = (token.size() > 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X'));
-
-    try
-    {
-        if (is_hex)
-        {
-            val = std::stoull(s_token, nullptr, 16);
+            uint64_t val = 0;
+            auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), val, base);
+            if (ec != std::errc{} || ptr != token.data() + token.size())
+            {
+                if (ec == std::errc::invalid_argument)
+                    throw std::invalid_argument("Invalid numeric token:"+ std::string(token));
+                if (ec == std::errc::result_out_of_range)
+                    throw std::invalid_argument("Value out of range: " + std::string(token));
+                
+                throw std::invalid_argument("Invalid numeric token:" + std::string(token));
+            }
+            if (negate)
+                val = ~val + 1;
+            switch (info->valtype)
+            {
+                case ValueType::UInt8:
+                    if (val > UINT8_MAX)
+                        throw std::invalid_argument("Value too large for 8-bit register");
+                    return static_cast<uint8_t>(val);
+                case ValueType::UInt16:
+                    if (val > UINT16_MAX)
+                        throw std::invalid_argument("Value too large for 16-bit register");
+                    return static_cast<uint16_t>(val);
+                case ValueType::UInt32:
+                    if (val > UINT32_MAX)
+                        throw std::invalid_argument("Value too large for 32-bit register");
+                    return static_cast<uint32_t>(val);
+                case ValueType::UInt64:
+                    return val;
+                case ValueType::UInt128:
+                    return static_cast<__uint128_t>(val);
+                default:
+                    break;
+            }
+            break;
         }
-        else
-        {
-            val = std::stoull(s_token, nullptr, 10);
-        }
     }
-    catch (...)
-    {
-        throw std::runtime_error("Invalid numeric token: " + s_token);
-    }
+    throw std::invalid_argument("Unsupported register value type");
+}
 
-    switch (info->size)
-    {
-        case 1:
-            if (val > UINT8_MAX)
-                throw std::runtime_error("Value too large for 8-bit register");
-            return static_cast<uint8_t>(val);
-        case 2:
-            if (val > UINT16_MAX)
-                throw std::runtime_error("Value too large for 16-bit register");
-            return static_cast<uint16_t>(val);
-        case 4:
-            if (val > UINT32_MAX)
-                throw std::runtime_error("Value too large for 32-bit register");
-            return static_cast<uint32_t>(val);
-        case 8:
-            return val;
-        case 16:
-            return static_cast<__uint128_t>(val);
-        default:
-            throw std::runtime_error("Unsupported register size");
-    }
 }
 
 RegisterValue Registers::read(std::string_view reg_name)
@@ -327,10 +408,6 @@ void Registers::write(std::string_view reg_name, std::string_view val_str)
     auto func = [&](auto &&arg) -> void
     {
         using T = std::decay_t<decltype(arg)>;
-        if (sizeof(T) > info->size)
-            throw std::invalid_argument("Size mismatch for register "
-            + std::string(info->name));
-
         std::memcpy(register_offset(info, *this), &arg, sizeof(T));
     };
 

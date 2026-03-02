@@ -27,13 +27,17 @@
 #include <string>
 
 #include <cstring>
-#include <iomanip>
 #include <type_traits>
+
+#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include "linenoise.h"
 #include "commands.hpp"
 #include "error.hpp"
 #include "process.hpp"
+
+#define COMMANDS_HISTORY "/tmp/breakpoint.txt"
 
 using ProcessPtr = std::unique_ptr<Process>;
 
@@ -66,45 +70,48 @@ void print_stop_reason(ProcessState state, std::uint8_t ret)
 
 void display_register(std::string_view name, const RegisterValue& val)
 {
-    std::ios old_state(nullptr);
-    old_state.copyfmt(std::cout);
-    std::cout << std::left << std::setw(6) << name << ": ";
+    std::string output = fmt::format("{:<6}: ", name);
 
-    std::visit([](auto&& arg)
+    std::visit([&output](auto&& arg)
     {
         using T = std::decay_t<decltype(arg)>;
 
-        if constexpr (std::is_same_v<T, __uint128_t>)
+        if constexpr (std::is_same_v<T, float>)
         {
-            uint64_t high = static_cast<uint64_t>(arg >> 64);
-            uint64_t low  = static_cast<uint64_t>(arg);
+            uint32_t bits;
+            std::memcpy(&bits, &arg, sizeof(bits));
+            output += fmt::format("0x{:<16x} (flt:{})", bits, arg);
+        }
+        else if constexpr(std::is_same_v<T, double>)
+        {
+            uint64_t bits;
+            std::memcpy(&bits, &arg, sizeof(bits));
+            output += fmt::format("0x{:<16x} (dbl:{})", bits, arg);
+        }
+        else if constexpr (std::is_same_v<T, __uint128_t>)
+        {
+            uint64_t high   = static_cast<uint64_t>(arg >> 64);
+            uint64_t low    = static_cast<uint64_t>(arg);
             uint32_t low_32 = static_cast<uint32_t>(low);
 
-            // Re-interpret the lower 64 bits as double and lower 32 as float
-            // We use bit_cast to look at the same bits as a different type
             double as_double;
             std::memcpy(&as_double, &low, sizeof(double));
-
             float as_float;
             std::memcpy(&as_float, &low_32, sizeof(float));
-    
-            std::cout << "0x" << std::hex << std::setfill('0') << std::internal 
-                      << std::setw(16) << high << std::setw(16) << low 
-                      << std::dec << " | dbl: " << as_double << " | flt: " << as_float;
+
+            output += fmt::format("0x{:016x}{:016x} | dbl:{} | flt:{}", 
+                                  high, low, as_double, as_float);
         } 
         else
         {
-            int width = sizeof(T) * 2;
             using SignedT = std::make_signed_t<T>;
-
-            std::cout << "0x" << std::hex << std::setfill('0') << std::internal
-                      << std::setw(width) << static_cast<uint64_t>(arg)
-                      << std::dec << " (u:" << static_cast<uint64_t>(arg) 
-                      << " s:" << static_cast<int64_t>(static_cast<SignedT>(arg)) << ")";
+            uint64_t uval = static_cast<uint64_t>(arg);
+            int64_t  sval = static_cast<int64_t>(static_cast<SignedT>(arg));
+            output += fmt::format("0x{:<16x} (u:{} s:{})", uval, uval, sval);
         }
     }, val);
-    std::cout << std::endl;
-    std::cout.copyfmt(old_state);
+
+    fmt::println("{}", output);
 }
 
 bool handle_command(std::string_view line, ProcessPtr &proc)
@@ -184,6 +191,10 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
 void cli_repl(ProcessPtr &proc)
 {
     char *raw_line = NULL;
+
+    linenoiseHistorySetMaxLen(200);
+    linenoiseHistoryLoad(COMMANDS_HISTORY);
+
     std::cout << "Welcome to breakpoint!" << std::endl;
 
     while ((raw_line = linenoise("bkpt> ")) != NULL)
@@ -205,11 +216,14 @@ void cli_repl(ProcessPtr &proc)
         linenoiseHistoryAdd(raw_line);
         free(raw_line);
     }
+
+    linenoiseHistorySave(COMMANDS_HISTORY);
 }
 
 int main(int argc, char *argv[])
 {
     int debug_pid = 0;
+    ProcessPtr proc;
 
     std::vector<std::string_view> args(argv, argv + argc);
     const std::string_view program_name = args[0];
@@ -227,10 +241,7 @@ int main(int argc, char *argv[])
             print_usage(program_name);
             return 0;
         }
-
-        ProcessPtr proc;
-
-        if (args[1] == "-p")
+        else if (args[1] == "-p")
         {
             if (argc < 3)
                 throw std::runtime_error("Missing PID after -p");
@@ -255,8 +266,6 @@ int main(int argc, char *argv[])
             std::vector<std::string_view> exec_args(args.begin() + 1, args.end());
             proc = Process::launch(exec_args);
         }
-
-        cli_repl(proc);
     }
     catch (const std::exception &e)
     {
@@ -264,6 +273,8 @@ int main(int argc, char *argv[])
         print_usage(program_name);
         return 1;
     }
+
+    cli_repl(proc);
 
     return 0;
 }
