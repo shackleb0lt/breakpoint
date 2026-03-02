@@ -68,7 +68,7 @@ void print_stop_reason(ProcessState state, std::uint8_t ret)
     }
 }
 
-void display_register(std::string_view name, const RegisterValue& val)
+std::string display_register(std::string_view name, const RegisterValue& val)
 {
     std::string output = fmt::format("{:<6}: ", name);
 
@@ -111,7 +111,7 @@ void display_register(std::string_view name, const RegisterValue& val)
         }
     }, val);
 
-    fmt::println("{}", output);
+    return output;
 }
 
 bool handle_command(std::string_view line, ProcessPtr &proc)
@@ -153,15 +153,29 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
         else if (action == Action::ReadReg)
         {
             RegisterValue val = proc->read_register(tokens[2]);
-            display_register(tokens[2], val);
+            std::cout << display_register(tokens[2], val) << std::endl;
         }
         else if (action == Action::ReadRegGPR)
         {
-            ;
+            std::size_t curr = 0;
+            std::size_t end = static_cast<std::size_t>(RegisterID::REG32_W30);
+            for (; curr <= end; curr++)
+            {
+                RegisterID id = static_cast<RegisterID>(curr);
+                RegisterValue val = proc->read_register(id);
+                std::cout << display_register(get_register_name(id), val) << std::endl;
+            }
         }
         else if (action == Action::ReadRegAll)
         {
-            ;
+            std::size_t curr = 0;
+            std::size_t end = static_cast<std::size_t>(RegisterID::REG32_FPCR);
+            for (; curr <= end; curr++)
+            {
+                RegisterID id = static_cast<RegisterID>(curr);
+                RegisterValue val = proc->read_register(id);
+                std::cout << display_register(get_register_name(id), val) << std::endl;
+            }
         }
         else if (action == Action::WriteReg)
         {

@@ -121,10 +121,11 @@ const struct RegisterInfo g_register_table[] =
     REG_VEC_B(24), REG_VEC_B(25), REG_VEC_B(26), REG_VEC_B(27), REG_VEC_B(28), REG_VEC_B(29), REG_VEC_B(30), REG_VEC_B(31),
 
     // --- Special Purpose Registers ---
-    {RegisterID::REG64_SP,  "sp",  8, (31 * 8), RegisterType::RegGPR, ValueType::UInt64},
-    {RegisterID::REG64_PC,  "pc",  8, (32 * 8), RegisterType::RegGPR, ValueType::UInt64},
-    {RegisterID::REG32_FPSR,  "fpsr",  4, offsetof(struct user_fpsimd_state, fpsr), RegisterType::RegFPR, ValueType::UInt32},
-    {RegisterID::REG32_FPCR,  "fpcr",  4, offsetof(struct user_fpsimd_state, fpcr), RegisterType::RegFPR, ValueType::UInt32}
+    {RegisterID::REG64_SP,      "sp",     8, (31 * 8), RegisterType::RegGPR, ValueType::UInt64},
+    {RegisterID::REG64_PC,      "pc",     8, (32 * 8), RegisterType::RegGPR, ValueType::UInt64},
+    {RegisterID::REG64_PSTATE,  "pstate", 8, (33 * 8), RegisterType::RegGPR, ValueType::UInt64},
+    {RegisterID::REG32_FPSR,    "fpsr",   4, offsetof(struct user_fpsimd_state, fpsr), RegisterType::RegFPR, ValueType::UInt32},
+    {RegisterID::REG32_FPCR,    "fpcr",   4, offsetof(struct user_fpsimd_state, fpcr), RegisterType::RegFPR, ValueType::UInt32}
 };
 
 const std::size_t g_register_table_size =
@@ -154,6 +155,12 @@ get_register_info(RegisterID id)
     throw std::logic_error("Register ID not found in table");
 }
 
+std::string_view
+get_register_name(RegisterID id)
+{
+    return get_register_info(id)->name;
+}
+
 #elif defined(__x86_64__)
 
 const RegisterInfo*
@@ -169,6 +176,13 @@ get_register_info(RegisterID id)
     (void) id;
     throw std::invalid_argument("Register access not implemented for x86");
 }
+
+std::string_view
+get_register_name(RegisterID id)
+{
+    return get_register_info(id)->name;
+}
+
 #endif
 
 namespace

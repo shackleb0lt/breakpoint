@@ -190,4 +190,5 @@ class Registers
         void write(std::string_view reg_name, std::string_view val_str);
 };
 
+std::string_view get_register_name(RegisterID id);
 #endif
