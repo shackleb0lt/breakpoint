@@ -260,7 +260,6 @@ read_commmon(const RegisterInfo *info, std::uint8_t *src_addr)
             break;
         }
     }
-    
 }
 
 void copy_to_cstr(std::string_view token, char buf[256])
@@ -408,6 +407,9 @@ void Registers::write(std::string_view reg_name, RegisterValue val)
         if (sizeof(T) > info->size)
             throw std::invalid_argument("Size mismatch for register "
             + std::string(info->name));
+        
+        if (info->type == RegisterType::RegGPR && sizeof(T) == 4)
+            std::memset(register_offset(info, *this), 0, 8);
 
         std::memcpy(register_offset(info, *this), &arg, sizeof(T));
     };
@@ -422,6 +424,9 @@ void Registers::write(std::string_view reg_name, std::string_view val_str)
     auto func = [&](auto &&arg) -> void
     {
         using T = std::decay_t<decltype(arg)>;
+
+        if (info->type == RegisterType::RegGPR && sizeof(T) == 4)
+            std::memset(register_offset(info, *this), 0, 8);
         std::memcpy(register_offset(info, *this), &arg, sizeof(T));
     };
 
