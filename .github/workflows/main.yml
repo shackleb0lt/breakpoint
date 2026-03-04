@@ -53,7 +53,7 @@ jobs:
           restore-keys: |
             vcpkg-aarch64-
 
-      - name: Configure CMake
+      - name: Configure CMake Debug
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
@@ -64,3 +64,21 @@ jobs:
 
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
+    
+      - name: Cleanup build
+        run: rm -rf build
+
+      - name: Configure CMake Release
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: ninja -C build
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Cleanup build
+        run: rm -rf build
