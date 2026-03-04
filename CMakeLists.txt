@@ -16,6 +16,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(Catch2 3 REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 
+string(TOUPPER "${CMAKE_BUILD_TYPE}" CONFIG_TYPE)
+
+if (CONFIG_TYPE STREQUAL "DEBUG")
+    add_definitions(-DDEBUG_MODE)
+endif()
+
 # ---------------------------------------------------------------------------
 # 1 External Library: linenoise
 # ---------------------------------------------------------------------------

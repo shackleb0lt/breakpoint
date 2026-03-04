@@ -32,6 +32,8 @@
 
 #include "registers.hpp"
 
+using virt_addr = std::uint64_t;
+
 enum class ProcessState : uint8_t
 {
     Init = 0,
@@ -62,8 +64,13 @@ public:
     pid_t get_pid() { return pid_; }
     ProcessState get_state() { return state_; }
 
-    RegisterValue read_register(std::string_view reg_name);
+    virt_addr get_pc();
+    void set_pc(virt_addr address);
+
     RegisterValue read_register(RegisterID reg_id);
+    RegisterValue read_register(std::string_view reg_name);
+    void write_register(RegisterID reg_id, RegisterValue val);
+    void write_register(RegisterID reg_id, std::string_view val);
     void write_register(std::string_view reg_name, RegisterValue val);
     void write_register(std::string_view reg_name, std::string_view val);
 

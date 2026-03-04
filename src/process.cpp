@@ -279,3 +279,30 @@ void Process::write_register(std::string_view reg_name, RegisterValue val)
 {
     reg_state_.write(reg_name, val);
 }
+
+void Process::write_register(RegisterID reg_id, std::string_view val_str)
+{
+    reg_state_.write(reg_id, val_str);
+}
+
+void Process::write_register(RegisterID reg_id, RegisterValue val)
+{
+    reg_state_.write(reg_id, val);
+}
+
+virt_addr Process::get_pc()
+{
+    if (state_ != ProcessState::Stopped)
+        Error::send("Cannot get program counter while process is running");
+
+    RegisterValue val = read_register(RegisterID::REG64_PC);
+    return virt_addr(std::get<uint64_t>(val));
+}
+
+void Process::set_pc(virt_addr address)
+{
+    if (state_ != ProcessState::Stopped)
+        Error::send("Cannot set program counter while process is running");
+
+    write_register(RegisterID::REG64_PC, RegisterValue{address});
+}

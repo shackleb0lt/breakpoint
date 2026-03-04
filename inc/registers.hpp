@@ -29,11 +29,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
+#include <type_traits>
 
 #if defined(__aarch64__) 
 #include <asm/ptrace.h>
 #elif defined(__x86_64__)
 #include <sys/user.h>
+#else
+#error "Project not made for non x86_64 or aarch64 machines"
 #endif
 
 using RegisterValue = std::variant
@@ -162,32 +165,34 @@ enum class RegisterID
 
 class Registers
 {
-    private:
-#if defined(__aarch64__) 
-        struct user_pt_regs gpr_{};
-        struct user_fpsimd_state fpr_{};
+private:
+#if defined(__aarch64__)
+    struct user_pt_regs gpr_{};
+    struct user_fpsimd_state fpr_{};
 #elif defined(__x86_64__)
-        struct user_regs_struct gpr_{};
-        struct user_fpregs_struct fpr_{};
+    struct user_regs_struct gpr_{};
+    struct user_fpregs_struct fpr_{};
 #endif
 
-        friend class Process;
-        Registers() = default;
+    friend class Process;
+    Registers() = default;
 
-    public:
-        Registers(const Registers&) = delete;
-        Registers& operator=(const Registers&) = delete;
+public:
+    Registers(const Registers &) = delete;
+    Registers &operator=(const Registers &) = delete;
 
-        void* gpr_ptr() { return &gpr_;}
-        void* fpr_ptr() { return &fpr_;}
-        std::size_t gpr_size() { return sizeof(gpr_);}
-        std::size_t fpr_size() { return sizeof(fpr_);}
+    void *gpr_ptr() { return &gpr_; }
+    void *fpr_ptr() { return &fpr_; }
+    std::size_t gpr_size() { return sizeof(gpr_); }
+    std::size_t fpr_size() { return sizeof(fpr_); }
 
-        RegisterValue read(std::string_view reg_name);
-        RegisterValue read(RegisterID reg_id);
+    RegisterValue read(RegisterID reg_id);
+    RegisterValue read(std::string_view reg_name);
 
-        void write(std::string_view reg_name, RegisterValue val);
-        void write(std::string_view reg_name, std::string_view val_str);
+    void write(std::string_view reg_name, RegisterValue val);
+    void write(std::string_view reg_name, std::string_view val_str);
+    void write(RegisterID reg_name, RegisterValue val);
+    void write(RegisterID reg_name, std::string_view val_str);
 };
 
 std::string_view get_register_name(RegisterID id);

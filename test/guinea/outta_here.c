@@ -22,7 +22,65 @@
  *
  */
 
-int main()
+#define STRINGIFY(x) #x
+#define XSTR(x) STRINGIFY(x)
+
+#if defined(__aarch64__)
+#define __NR_getpid  172
+#define __NR_kill    129
+#endif
+
+#if defined(__x86_64__)
+#define __NR_getpid  39
+#define __NR_kill    62
+#endif
+
+#define SIGTRAP 5
+
+int main(int argc, char *argv[])
 {
+    (void) argv;
+    if (argc == 1)
+        return 0;
+
+#if defined(__aarch64__)
+    asm volatile
+    (
+        /* getpid() → x0 = pid */
+        "mov x8, #" XSTR(__NR_getpid)  " \n\t"
+        "svc #0                          \n\t"
+
+        /* kill(pid, SIGTRAP=5) */
+        "mov x1, #" XSTR(SIGTRAP)      " \n\t"
+        "mov x8, #" XSTR(__NR_kill)    " \n\t"
+        "svc #0                          \n\t"
+        :   /* no outputs */
+        :   /* no inputs  */
+        :   /* clobbers   */
+            "x0",  "x1",  "x8",  "x9"
+    );
+#endif
+
+#if defined(__x86_64__)
+    asm volatile
+    (
+        /* getpid() → rax = pid */
+        "movq $" XSTR(__NR_getpid)  ", %%rax\n\t"
+        "syscall\n\t"
+
+        // Move pid result to rdi (arg 1 for kill)
+        "movq %%rax, %%rdi\n\t"
+
+        /* kill(pid, SIGTRAP=5) */
+        "movq $" XSTR(__NR_kill)    ", %%rax\n\t"
+        "movq $" XSTR(__NR_kill)    ", %%rsi\n\t"
+        "syscall\n\t"
+        : /* no outputs */
+        : /* no inputs  */
+        : /* clobbers   */
+            "rax", "rdi", "rsi"
+    );
+#endif
+
     return 0;
 }
