@@ -1,11 +1,15 @@
 cmake_minimum_required(VERSION 3.25)
-
-# set(CMAKE_C_COMPILER "clang")
-# set(CMAKE_CXX_COMPILER "clang++")
-
 project(breakpoint C CXX)
 
-# Set C standard and ensure symbols are generated for GDB
+find_program(CLANG_C_COMPILER NAMES clang)
+find_program(CLANG_CXX_COMPILER NAMES clang++)
+
+if(CLANG_C_COMPILER AND CLANG_CXX_COMPILER)
+    set(CMAKE_C_COMPILER "${CLANG_C_COMPILER}")
+    set(CMAKE_CXX_COMPILER "${CLANG_CXX_COMPILER}")
+    message(STATUS "Using Clang compilers.")
+endif()
+
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
