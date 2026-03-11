@@ -184,9 +184,14 @@ const RegisterInfo *get_register_info(std::string_view key);
 template <typename T>
 T register_value_cast(const RegisterValue& val)
 {
+    static_assert(!std::is_same_v<T, RegisterValue>,
+        "Use read(info) directly instead of casting to RegisterValue");
+
     auto func = [](const auto& stored) -> T
     {
         static_assert(!std::is_pointer_v<T>, "Cannot cast to pointer type");
+        static_assert(std::is_trivially_copyable_v<T>,
+            "Target type must be trivially copyable for memcpy");
         
         if constexpr (sizeof(T) > sizeof(stored))
             Error::send("Requested type is larger than stored size");
@@ -236,16 +241,18 @@ public:
         const RegisterInfo *info = get_register_info(reg_id);
         if constexpr(std::is_same_v<T, RegisterValue>)
             return read(info);
-        return register_value_cast<T>(read(info));
+        else
+            return register_value_cast<T>(read(info));
     }
 
     template <typename T>
     T read(std::string_view reg_name)
     {
-        const RegisterInfo *info = get_register_info(reg_name);
-        if constexpr(std::is_same_v<T, RegisterValue>)
+        const RegisterInfo* info = get_register_info(reg_name);
+        if constexpr (std::is_same_v<T, RegisterValue>)
             return read(info);
-        return register_value_cast<T>(read(info));
+        else
+            return register_value_cast<T>(read(info));
     }
 
     void write(RegisterID reg_id, RegisterValue val)
