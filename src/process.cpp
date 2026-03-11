@@ -33,7 +33,7 @@
 #include <unistd.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
-
+#include <sys/personality.h>
 #include <sys/user.h>
 #include <sys/uio.h>      // Required for iovec
 #include <elf.h>          // Required for NT_PRSTATUS
@@ -119,9 +119,59 @@ std::uint8_t Process::wait()
     return info;
 }
 
+std::uint8_t Process::step_instruction()
+{
+    if (state_ != ProcessState::Stopped)
+        Error::send("Can only perform single step when process is stopped");
+
+    virt_addr pc = get_pc();
+    BreakpointSite *bp_ptr = nullptr;
+    if (breakpoint_sites_.enabled_stoppoint_at_address(pc))
+    {
+        BreakpointSite &bp = breakpoint_sites_.get_by_address(pc);
+        bp.disable();
+        bp_ptr = &bp;
+    }
+
+    if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0) {
+        Error::send_errno("Could not single step");
+    }
+
+    std::uint8_t ret = this->wait();
+    if (bp_ptr)
+    {
+        bp_ptr->enable();
+    }
+
+    return ret;
+}
+
 void Process::resume()
 {
+    if (state_ != ProcessState::Stopped)
+        Error::send("Process not in stopped state, cannot continue");
+
     set_registers();
+
+    virt_addr pc = get_pc();
+    if (breakpoint_sites_.enabled_stoppoint_at_address(pc))
+    {
+        BreakpointSite &bp = breakpoint_sites_.get_by_address(pc);
+        bp.disable();
+
+        if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0)
+        {
+            Error::send_errno("Failed to single step");
+        }
+    
+        int wait_status;
+        if (waitpid(pid_, &wait_status, 0) < 0)
+        {
+            Error::send_errno("waitpid failed");
+        }
+
+        bp.enable();
+    }
 
     if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0)
     {
@@ -150,6 +200,9 @@ Process::launch(std::vector<std::string_view> &exec_args)
     if (debug_pid == 0)
     {
         channel.close_read();
+
+        personality(ADDR_NO_RANDOMIZE);
+
         if (::ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
         {
             exit_with_perror(channel, "Tracing Failed");
@@ -227,15 +280,15 @@ Process::attach(pid_t pid)
 void Process::get_registers()
 {
     struct iovec iov;
-    iov.iov_base = reg_state_.gpr_ptr();
-    iov.iov_len = reg_state_.gpr_size();
+    iov.iov_base = reg_state_->gpr_ptr();
+    iov.iov_len = reg_state_->gpr_size();
     if (ptrace(PTRACE_GETREGSET, pid_, NT_PRSTATUS, &iov) < 0)
     {
         Error::send_errno("Failed to read general purpose registers");
     }
 
-    iov.iov_base = reg_state_.fpr_ptr();
-    iov.iov_len = reg_state_.fpr_size();
+    iov.iov_base = reg_state_->fpr_ptr();
+    iov.iov_len = reg_state_->fpr_size();
     if (ptrace(PTRACE_GETREGSET, pid_, NT_FPREGSET, &iov) < 0)
     {
         Error::send_errno("Failed to read vector registers");
@@ -245,49 +298,19 @@ void Process::get_registers()
 void Process::set_registers()
 {
     struct iovec iov;
-    iov.iov_base = reg_state_.gpr_ptr();
-    iov.iov_len = reg_state_.gpr_size();
+    iov.iov_base = reg_state_->gpr_ptr();
+    iov.iov_len = reg_state_->gpr_size();
     if (ptrace(PTRACE_SETREGSET, pid_, NT_PRSTATUS, &iov) < 0)
     {
         Error::send_errno("Failed to read general purpose registers");
     }
 
-    iov.iov_base = reg_state_.fpr_ptr();
-    iov.iov_len = reg_state_.fpr_size();
+    iov.iov_base = reg_state_->fpr_ptr();
+    iov.iov_len = reg_state_->fpr_size();
     if (ptrace(PTRACE_SETREGSET, pid_, NT_FPREGSET, &iov) < 0)
     {
         Error::send_errno("Failed to read vector registers");
     }
-}
-
-RegisterValue Process::read_register(std::string_view reg_name)
-{
-    return reg_state_.read(reg_name);
-}
-
-RegisterValue Process::read_register(RegisterID reg_id)
-{
-    return reg_state_.read(reg_id);
-}
-
-void Process::write_register(std::string_view reg_name, std::string_view val_str)
-{
-    reg_state_.write(reg_name, val_str);
-}
-
-void Process::write_register(std::string_view reg_name, RegisterValue val)
-{
-    reg_state_.write(reg_name, val);
-}
-
-void Process::write_register(RegisterID reg_id, std::string_view val_str)
-{
-    reg_state_.write(reg_id, val_str);
-}
-
-void Process::write_register(RegisterID reg_id, RegisterValue val)
-{
-    reg_state_.write(reg_id, val);
 }
 
 virt_addr Process::get_pc()
@@ -295,8 +318,8 @@ virt_addr Process::get_pc()
     if (state_ != ProcessState::Stopped)
         Error::send("Cannot get program counter while process is running");
 
-    RegisterValue val = read_register(RegisterID::REG64_PC);
-    return virt_addr(std::get<uint64_t>(val));
+    uint64_t val = reg_state_->read<uint64_t>(RegisterID::REG64_PC);
+    return virt_addr(val);
 }
 
 void Process::set_pc(virt_addr address)
@@ -304,5 +327,46 @@ void Process::set_pc(virt_addr address)
     if (state_ != ProcessState::Stopped)
         Error::send("Cannot set program counter while process is running");
 
-    write_register(RegisterID::REG64_PC, RegisterValue{address});
+    reg_state_->write(RegisterID::REG64_PC, RegisterValue{address});
 }
+
+BreakpointSite&
+Process::create_breakpoint_site(virt_addr addr)
+{
+    if (breakpoint_sites_.contains_address(addr))
+    {
+        Error::send("Breakpoint site already created at address" +
+            std::to_string(addr));
+    }
+    return breakpoint_sites_.push(
+        std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, addr)));
+}
+
+#ifdef DEBUG_MODE
+std::vector<std::uint32_t>
+Process::get_instructions(virt_addr addr, std::size_t count)
+{
+    size_t i = 0; 
+    std::vector<std::uint32_t> res;
+
+    for (i = 0; i < count; i+=2)
+    {
+        errno = 0;
+        std::uint64_t data = ptrace(PTRACE_PEEKDATA, pid_, addr, nullptr);
+        addr += 8;
+        if (errno != 0)
+        {
+            res.push_back(0x0);
+            res.push_back(0x0);
+        }
+        else
+        {
+            std::uint32_t low  = (data & 0xFFFFFFFF);
+            std::uint32_t high = (data >> 32);
+            res.push_back(low);
+            res.push_back(high);
+        }
+    }
+    return res;
+}
+#endif

@@ -31,6 +31,8 @@
 #include <sys/types.h>
 
 #include "registers.hpp"
+#include "stoppoint_collection.hpp"
+#include "breakpoint_site.hpp"
 
 using virt_addr = std::uint64_t;
 
@@ -60,6 +62,7 @@ public:
 
     std::uint8_t wait();
     void resume();
+    std::uint8_t step_instruction();
 
     pid_t get_pid() { return pid_; }
     ProcessState get_state() { return state_; }
@@ -67,22 +70,32 @@ public:
     virt_addr get_pc();
     void set_pc(virt_addr address);
 
-    RegisterValue read_register(RegisterID reg_id);
-    RegisterValue read_register(std::string_view reg_name);
-    void write_register(RegisterID reg_id, RegisterValue val);
-    void write_register(RegisterID reg_id, std::string_view val);
-    void write_register(std::string_view reg_name, RegisterValue val);
-    void write_register(std::string_view reg_name, std::string_view val);
+    Registers &registers() { return *reg_state_; }
+    const Registers &registers() const { return *reg_state_; }
+
+    BreakpointSite& create_breakpoint_site(virt_addr address);
+
+    StoppointCollection<BreakpointSite>&
+    breakpoint_sites() { return breakpoint_sites_; }
+    const StoppointCollection<BreakpointSite>&
+    breakpoint_sites() const { return breakpoint_sites_; }
+
+#ifdef DEBUG_MODE
+    std::vector<std::uint32_t>
+    get_instructions(virt_addr addr, std::size_t count);
+#endif
 
 private:
-    Process(pid_t pid, bool kill_on_end) : pid_(pid), kill_on_end_(kill_on_end) {}
+    Process(pid_t pid, bool kill_on_end) : 
+        pid_(pid), kill_on_end_(kill_on_end), reg_state_(new Registers(*this)){}
     void get_registers();
     void set_registers();
 
     pid_t pid_ = 0;
     bool kill_on_end_ = true;
     ProcessState state_ = ProcessState::Init;
-    Registers reg_state_;
+    std::unique_ptr<Registers> reg_state_;
+    StoppointCollection<BreakpointSite> breakpoint_sites_;
 };
 
 #endif

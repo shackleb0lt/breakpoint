@@ -31,16 +31,24 @@
 #include <string_view>
 #include <type_traits>
 
+#include "error.hpp"
+
 #if defined(__aarch64__) 
 #include <asm/ptrace.h>
 #elif defined(__x86_64__)
 #include <sys/user.h>
 #else
-#error "Project not made for non x86_64 or aarch64 machines"
+#error "Project not made for non x86_64 or non aarch64 machines"
 #endif
 
 using RegisterValue = std::variant
     <uint8_t, uint16_t, uint32_t, uint64_t, float, double, __uint128_t>;
+
+enum class RegisterType
+{
+    RegGPR,
+    RegFPR,
+};
 
 #if defined(__aarch64__)
 
@@ -163,9 +171,40 @@ enum class RegisterID
 
 #endif
 
+class Process;
+struct RegisterInfo;
+
+std::string_view    get_register_name(RegisterID id);
+RegisterID          get_register_id(std::string_view name);
+RegisterType        get_register_type(RegisterID key);
+RegisterType        get_register_type(std::string_view key);
+const RegisterInfo *get_register_info(RegisterID key);
+const RegisterInfo *get_register_info(std::string_view key);
+
+template <typename T>
+T register_value_cast(const RegisterValue& val)
+{
+    auto func = [](const auto& stored) -> T
+    {
+        static_assert(!std::is_pointer_v<T>, "Cannot cast to pointer type");
+        
+        if constexpr (sizeof(T) > sizeof(stored))
+            Error::send("Requested type is larger than stored size");
+
+        T result;
+        memcpy(&result, &stored, sizeof(T));
+        return result;
+    };
+
+    return std::visit(func, val);
+}
+
 class Registers
 {
 private:
+    friend Process;
+    Process *proc_;
+
 #if defined(__aarch64__)
     struct user_pt_regs gpr_{};
     struct user_fpsimd_state fpr_{};
@@ -174,26 +213,64 @@ private:
     struct user_fpregs_struct fpr_{};
 #endif
 
-    friend class Process;
-    Registers() = default;
-
-public:
-    Registers(const Registers &) = delete;
-    Registers &operator=(const Registers &) = delete;
+    Registers(Process &proc): proc_(&proc) {}
 
     void *gpr_ptr() { return &gpr_; }
     void *fpr_ptr() { return &fpr_; }
     std::size_t gpr_size() { return sizeof(gpr_); }
     std::size_t fpr_size() { return sizeof(fpr_); }
 
-    RegisterValue read(RegisterID reg_id);
-    RegisterValue read(std::string_view reg_name);
+    std::uint8_t *register_offset(const RegisterInfo *info);
+    void write(const RegisterInfo* info, RegisterValue val);
+    void write(const RegisterInfo* info, std::string_view val);
+    RegisterValue read(const RegisterInfo* info);
 
-    void write(std::string_view reg_name, RegisterValue val);
-    void write(std::string_view reg_name, std::string_view val_str);
-    void write(RegisterID reg_name, RegisterValue val);
-    void write(RegisterID reg_name, std::string_view val_str);
+public:
+    Registers() = delete;
+    Registers(const Registers &) = delete;
+    Registers &operator=(const Registers &) = delete;
+
+    template <typename T>
+    T read(RegisterID reg_id)
+    {
+        const RegisterInfo *info = get_register_info(reg_id);
+        if constexpr(std::is_same_v<T, RegisterValue>)
+            return read(info);
+        return register_value_cast<T>(read(info));
+    }
+
+    template <typename T>
+    T read(std::string_view reg_name)
+    {
+        const RegisterInfo *info = get_register_info(reg_name);
+        if constexpr(std::is_same_v<T, RegisterValue>)
+            return read(info);
+        return register_value_cast<T>(read(info));
+    }
+
+    void write(RegisterID reg_id, RegisterValue val)
+    {
+        const RegisterInfo *info = get_register_info(reg_id);
+        write(info, val);
+    }
+
+    void write(std::string_view reg_name, RegisterValue val)
+    {
+        const RegisterInfo *info = get_register_info(reg_name);
+        write(info, val);
+    }
+
+    void write(RegisterID reg_id, std::string_view val)
+    {
+        const RegisterInfo *info = get_register_info(reg_id);
+        write(info, val);
+    }
+
+    void write(std::string_view reg_name, std::string_view val)
+    {
+        const RegisterInfo *info = get_register_info(reg_name);
+        write(info, val);
+    }
 };
 
-std::string_view get_register_name(RegisterID id);
 #endif

@@ -111,13 +111,16 @@ TEST_CASE("Read all registers")
 
     virt_addr addr;
     CHECK_NOTHROW(addr = proc->get_pc());
+    CHECK_NOTHROW(proc->set_pc(0xFFFFFFFFULL));
+
+    CHECK(proc->get_pc() == 0xFFFFFFFFULL);
     CHECK_NOTHROW(proc->set_pc(addr));
 
     std::size_t end = static_cast<std::size_t>(RegisterID::REG32_FPCR);
     for (std::size_t curr = 0;  curr <= end; curr++)
     {
         RegisterID id = static_cast<RegisterID>(curr);
-        CHECK_NOTHROW(proc->read_register(id));
+        CHECK_NOTHROW(proc->registers().read<RegisterValue>(id));
     }
 
     proc->resume();
@@ -165,34 +168,35 @@ TEST_CASE("Register read via asm_magic")
     SECTION("read using string_view")
     {
         #if defined(__aarch64__)
-        CHECK_THROWS_AS(proc->read_register("x34"), std::invalid_argument);
 
-        CHECK(u64_from(proc->read_register("x19")) == val64);
-        CHECK(u32_from(proc->read_register("w20")) == val32);
+        CHECK_THROWS_AS(proc->registers().read<RegisterValue>("x34"), std::invalid_argument);
 
-        CHECK(dbl_from(proc->read_register("d19")) == valD);
-        CHECK(flt_from(proc->read_register("s20")) == valF);
+        CHECK(proc->registers().read<uint64_t>("x19") == val64);
+        CHECK(proc->registers().read<uint32_t>("w20") == val32);
 
-        CHECK(u8_from(proc->read_register("b21"))  == val8);
-        CHECK(u16_from(proc->read_register("h22")) == val16);
-        CHECK(u32_from(proc->read_register("s23")) == val32);
-        CHECK(u64_from(proc->read_register("d24")) == val64);
+        CHECK(proc->registers().read<double>("d19") == valD);
+        CHECK(proc->registers().read<float>("s20")  == valF);
+
+        CHECK(proc->registers().read<uint8_t>("b21") == val8);
+        CHECK(proc->registers().read<uint16_t>("h22") == val16);
+        CHECK(proc->registers().read<uint32_t>("s23") == val32);
+        CHECK(proc->registers().read<uint64_t>("d24") == val64);
         #endif
     }
 
     SECTION("read using RegisterID")
     {
         #if defined(__aarch64__)
-        CHECK(u64_from(proc->read_register(RegisterID::REG64_X19)) == val64);
-        CHECK(u32_from(proc->read_register(RegisterID::REG32_W20)) == val32);
+        CHECK(proc->registers().read<uint64_t>(RegisterID::REG64_X19) == val64);
+        CHECK(proc->registers().read<uint32_t>(RegisterID::REG32_W20) == val32);
 
-        CHECK(dbl_from(proc->read_register(RegisterID::REG64_D19)) == valD);
-        CHECK(flt_from(proc->read_register(RegisterID::REG32_S20)) == valF);
+        CHECK(proc->registers().read<double>(RegisterID::REG64_D19) == valD);
+        CHECK(proc->registers().read<float>(RegisterID::REG32_S20)  == valF);
 
-        CHECK(u8_from(proc->read_register(RegisterID::REG8_B21))   == val8);
-        CHECK(u16_from(proc->read_register(RegisterID::REG16_H22)) == val16);
-        CHECK(u32_from(proc->read_register(RegisterID::REG32_S23)) == val32);
-        CHECK(u64_from(proc->read_register(RegisterID::REG64_D24)) == val64);
+        CHECK(proc->registers().read<uint8_t>(RegisterID::REG8_B21)   == val8);
+        CHECK(proc->registers().read<uint16_t>(RegisterID::REG16_H22) == val16);
+        CHECK(proc->registers().read<uint32_t>(RegisterID::REG32_S23) == val32);
+        CHECK(proc->registers().read<uint64_t>(RegisterID::REG64_D24) == val64);
         #endif
     }
 
@@ -237,17 +241,36 @@ TEST_CASE("Register write with RegisterValue via asm_magic")
     CHECK(process_status(pid) == 't');
     CHECK(proc->get_state() == ProcessState::Stopped);
     CHECK(info == SIGTRAP);
-#if defined(__aarch64__)
-    proc->write_register("x9",  RegisterValue{val64});
-    proc->write_register("w10", RegisterValue{val32});
-    proc->write_register("x11", RegisterValue{val32});
-    proc->write_register("d19", RegisterValue{valD});
-    proc->write_register("s20", RegisterValue{valF});
-    proc->write_register("b21", RegisterValue{val8});
-    proc->write_register("h22", RegisterValue{val16});
-    proc->write_register("s23", RegisterValue{val32});
-    proc->write_register("d24", RegisterValue{val64});
-#endif
+
+    SECTION("Write value via RegisterValue")
+    {    
+        #if defined(__aarch64__)
+        proc->registers().write("x9",  RegisterValue{val64});
+        proc->registers().write("w10", RegisterValue{val32});
+        proc->registers().write("x11", RegisterValue{val32});
+        proc->registers().write("d19", RegisterValue{valD});
+        proc->registers().write("s20", RegisterValue{valF});
+        proc->registers().write("b21", RegisterValue{val8});
+        proc->registers().write("h22", RegisterValue{val16});
+        proc->registers().write("s23", RegisterValue{val32});
+        proc->registers().write("d24", RegisterValue{val64});
+        #endif
+    }
+
+    SECTION("Write value via string_view")
+    {    
+        #if defined(__aarch64__)
+        proc->registers().write("x9",  "0xcafebeefdeadbabe");
+        proc->registers().write("w10", "0xbeadfade");
+        proc->registers().write("x11", "0xbeadfade");
+        proc->registers().write("d19", "0x1.a2b3c4d5e6f78p+5");
+        proc->registers().write("s20", "0x1.9f7e5dp-3f");
+        proc->registers().write("b21", "0xbe");
+        proc->registers().write("h22", "0xface");
+        proc->registers().write("s23", "0xbeadfade");
+        proc->registers().write("d24", "0xcafebeefdeadbabe");
+        #endif
+    }
 
     proc->resume();
     std::uint8_t ret = proc->wait();
@@ -279,3 +302,6 @@ TEST_CASE("Program Counter invalid acccess")
     CHECK_FALSE(process_exists(pid));
 }
 
+/*
+asm_magic w 0xcafebeefdeadbabe 0xbeadfade 0xface 0xbe 0x1.a2b3c4d5e6f78p+5 0x1.9f7e5dp-3f
+*/

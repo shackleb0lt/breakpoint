@@ -25,7 +25,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
-
+#include <charconv>
 #include <cstring>
 #include <type_traits>
 
@@ -68,47 +68,97 @@ void print_stop_reason(ProcessState state, std::uint8_t ret)
     }
 }
 
-std::string display_register(std::string_view name, const RegisterValue& val)
+std::uint64_t to_positive_integral(std::string_view token)
 {
+    uint64_t val = 0;
+
+    if (token.size() > 2 && token[0] == '0' &&
+       (token[1] == 'x' || token[1] == 'X'))
+    {
+        std::string_view hex = token.substr(2);
+        auto [ptr, ec] = std::from_chars(hex.data(), hex.data() + hex.size(), val, 16);
+        if (ec == std::errc::result_out_of_range)
+            throw std::invalid_argument("Hex value out of range");
+        if (ec != std::errc{} || ptr != hex.data() + hex.size())
+            throw std::invalid_argument("Invalid hex value");
+
+        return val;
+    }
+
+    if (token[0] == '0' && token.size() > 1)
+    {
+        std::string_view oct = token.substr(1);
+        auto [ptr, ec] = std::from_chars(oct.data(), oct.data() + oct.size(), val, 8);
+        if (ec == std::errc::result_out_of_range)
+            throw std::invalid_argument("Octal value out of range");
+        if (ec != std::errc{} || ptr != oct.data() + oct.size())
+            throw std::invalid_argument("Invalid octal value");
+
+        return val;
+    }
+
+    auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), val);
+    if (ec == std::errc::result_out_of_range)
+        throw std::invalid_argument("Value out of range");
+    if (ec != std::errc{} || ptr != token.data() + token.size())
+        throw std::invalid_argument("Invalid value");
+    return val;
+
+}
+
+std::string
+display_register(const RegisterID id, const RegisterValue& val)
+{
+    std::string_view name = get_register_name(id);
     std::string output = fmt::format("{:<6}: ", name);
 
-    std::visit([&output](auto&& arg)
+    std::visit([&](auto&& arg)
     {
         using T = std::decay_t<decltype(arg)>;
 
-        if constexpr (std::is_same_v<T, float>)
-        {
-            uint32_t bits;
-            std::memcpy(&bits, &arg, sizeof(bits));
-            output += fmt::format("0x{:<16x} (flt:{})", bits, arg);
-        }
-        else if constexpr(std::is_same_v<T, double>)
-        {
-            uint64_t bits;
-            std::memcpy(&bits, &arg, sizeof(bits));
-            output += fmt::format("0x{:<16x} (dbl:{})", bits, arg);
-        }
-        else if constexpr (std::is_same_v<T, __uint128_t>)
+        if constexpr (std::is_same_v<T, __uint128_t>)
         {
             uint64_t high   = static_cast<uint64_t>(arg >> 64);
             uint64_t low    = static_cast<uint64_t>(arg);
             uint32_t low_32 = static_cast<uint32_t>(low);
 
-            double as_double;
-            std::memcpy(&as_double, &low, sizeof(double));
-            float as_float;
-            std::memcpy(&as_float, &low_32, sizeof(float));
+            double as_double;  float as_float;
+            std::memcpy(&as_double, &low,    sizeof(double));
+            std::memcpy(&as_float,  &low_32, sizeof(float));
 
-            output += fmt::format("0x{:016x}{:016x} | dbl:{} | flt:{}", 
+            output += fmt::format("0x{:016x}{:016x} | dbl:{} | flt:{}",
                                   high, low, as_double, as_float);
-        } 
-        else
+            return;
+        }
+
+        if constexpr (std::is_same_v<T, uint64_t> || std::is_same_v<T, uint32_t>)
+        {
+            if (get_register_type(id) == RegisterType::RegFPR)
+            {
+                if constexpr (std::is_same_v<T, uint64_t>)
+                {
+                    double dbl;
+                    std::memcpy(&dbl, &arg, sizeof(double));
+                    output += fmt::format("0x{:016x} (dbl:{})", arg, dbl);
+                }
+                else
+                {
+                    float flt;
+                    std::memcpy(&flt, &arg, sizeof(float));
+                    output += fmt::format("0x{:016x} (flt:{})", arg, flt);
+                }
+                return;
+            }
+        }
+
+        if constexpr (std::is_integral_v<T>)
         {
             using SignedT = std::make_signed_t<T>;
             uint64_t uval = static_cast<uint64_t>(arg);
             int64_t  sval = static_cast<int64_t>(static_cast<SignedT>(arg));
-            output += fmt::format("0x{:<16x} (u:{} s:{})", uval, uval, sval);
+            output += fmt::format("0x{:016x} (u:{} s:{})", uval, uval, sval);
         }
+
     }, val);
 
     return output;
@@ -150,10 +200,15 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
             std::uint8_t ret =  proc->wait();
             print_stop_reason(proc->get_state(), ret);
         }
+        else if(action == Action::StepInst)
+        {
+            std::uint8_t ret = proc->step_instruction();
+            print_stop_reason(proc->get_state(), ret);
+        }
         else if (action == Action::ReadReg)
         {
-            RegisterValue val = proc->read_register(tokens[2]);
-            std::cout << display_register(tokens[2], val) << std::endl;
+            RegisterValue val = proc->registers().read<RegisterValue>(tokens[2]);
+            std::cout << display_register(get_register_id(tokens[2]), val) << std::endl;
         }
         else if (action == Action::ReadRegGPR)
         {
@@ -162,8 +217,8 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
             for (; curr <= end; curr++)
             {
                 RegisterID id = static_cast<RegisterID>(curr);
-                RegisterValue val = proc->read_register(id);
-                std::cout << display_register(get_register_name(id), val) << std::endl;
+                RegisterValue val = proc->registers().read<RegisterValue>(id);
+                std::cout << display_register(id, val) << std::endl;
             }
         }
         else if (action == Action::ReadRegAll)
@@ -173,13 +228,52 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
             for (; curr <= end; curr++)
             {
                 RegisterID id = static_cast<RegisterID>(curr);
-                RegisterValue val = proc->read_register(id);
-                std::cout << display_register(get_register_name(id), val) << std::endl;
+                RegisterValue val = proc->registers().read<RegisterValue>(id);
+                std::cout << display_register(id, val) << std::endl;
             }
         }
         else if (action == Action::WriteReg)
         {
-            proc->write_register(tokens[2], tokens[3]);
+            proc->registers().write(tokens[2], tokens[3]);
+        }
+        else if (action == Action::BPSiteList)
+        {
+            if (proc->breakpoint_sites().empty())
+            {
+                fmt::println("No breakpoints set");
+            }
+            else
+            {
+                fmt::println("Current breakpoints:");
+                auto func = [](BreakpointSite& site)
+                {
+                    fmt::print("{}: address = {:#x}, {}\n",
+                        site.id(), site.address(),
+                        site.is_enabled() ? "enabled" : "disabled");
+                };
+
+                proc->breakpoint_sites().for_each(func);
+            }
+        }
+        else if (action == Action::BPSiteSet)
+        {
+            virt_addr address = to_positive_integral(tokens[2]);
+            proc->create_breakpoint_site(address).enable();
+        }
+        else if (action == Action::BPSiteEn)
+        {
+            auto id = static_cast<BreakpointSite::id_type>(to_positive_integral(tokens[2]));
+            proc->breakpoint_sites().get_by_id(id).enable();
+        }
+        else if (action == Action::BPSiteDis)
+        {
+            auto id = static_cast<BreakpointSite::id_type>(to_positive_integral(tokens[2]));
+            proc->breakpoint_sites().get_by_id(id).disable();
+        }
+        else if (action == Action::BPSiteDel)
+        {
+            auto id = static_cast<BreakpointSite::id_type>(to_positive_integral(tokens[2]));
+            proc->breakpoint_sites().remove_by_id(id);
         }
     }
     catch(const std::invalid_argument& err)
@@ -210,6 +304,7 @@ void cli_repl(ProcessPtr &proc)
     linenoiseHistoryLoad(COMMANDS_HISTORY);
 
     std::cout << "Welcome to breakpoint!" << std::endl;
+    std::cout << "Attached process ID is: " << proc->get_pid() << std::endl;
 
     while ((raw_line = linenoise("bkpt> ")) != NULL)
     {

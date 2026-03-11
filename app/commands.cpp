@@ -50,8 +50,39 @@ const Command cmd_register[] = {
     {"",            Action::Invalid,    nullptr}
 };
 
+const Command cmd_breakpoint_set[] = {
+    {"",            Action::BPSiteSet,  nullptr},
+    {"",            Action::Invalid,    nullptr}
+};
+
+const Command cmd_breakpoint_enable[] = {
+    {"",            Action::BPSiteEn,   nullptr},
+    {"",            Action::Invalid,    nullptr}
+};
+
+const Command cmd_breakpoint_disable[] = {
+    {"",            Action::BPSiteDis,  nullptr},
+    {"",            Action::Invalid,    nullptr}
+};
+
+const Command cmd_breakpoint_delete[] = {
+    {"",            Action::BPSiteDel,  nullptr},
+    {"",            Action::Invalid,    nullptr}
+};
+
+const Command cmd_breakpoint[] = {
+    {"list",        Action::BPSiteList, nullptr},
+    {"set",         Action::Incomplete, cmd_breakpoint_set},
+    {"enable",      Action::Incomplete, cmd_breakpoint_enable},
+    {"disable",     Action::Incomplete, cmd_breakpoint_disable},
+    {"delete",      Action::Incomplete, cmd_breakpoint_delete},
+    {"",            Action::Invalid,    nullptr}
+};
+
 const Command top_level[] = {
+    {"breakpoint",  Action::Incomplete, cmd_breakpoint},
     {"continue",    Action::Continue,   nullptr},
+    {"step",        Action::StepInst,   nullptr},
     {"help",        Action::Help,       nullptr},
     {"register",    Action::Incomplete, cmd_register},
     {"quit",        Action::Quit,       nullptr},

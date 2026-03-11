@@ -29,13 +29,6 @@
 #include <stdexcept>
 #include <string>
 
-enum class RegisterType
-{
-    RegGPR,
-    RegFPR,
-    Both
-};
-
 enum class ValueType
 {
     UInt8,
@@ -54,21 +47,19 @@ struct RegisterInfo
     std::size_t size;
     std::size_t offset;
     RegisterType type;
-    ValueType valtype;
 };
 
 #if defined(__aarch64__)
 
 // Macros to keep the table readable and maintainable
-#define REG_GPR_X(i) {RegisterID::REG64_X##i, "x"#i, 8, (i * 8), RegisterType::RegGPR, ValueType::UInt64}
-#define REG_GPR_W(i) {RegisterID::REG32_W##i, "w"#i, 4, (i * 8), RegisterType::RegGPR, ValueType::UInt32}
+#define REG_GPR_X(i) {RegisterID::REG64_X##i, "x"#i, 8, (i * 8), RegisterType::RegGPR}
+#define REG_GPR_W(i) {RegisterID::REG32_W##i, "w"#i, 4, (i * 8), RegisterType::RegGPR}
 
-
-#define REG_VEC_V(i) {RegisterID::REG128_V##i, "v"#i, 16, (i * 16), RegisterType::RegFPR, ValueType::UInt128}
-#define REG_VEC_D(i) {RegisterID::REG64_D##i,  "d"#i, 8,  (i * 16), RegisterType::RegFPR, ValueType::Double}
-#define REG_VEC_S(i) {RegisterID::REG32_S##i,  "s"#i, 4,  (i * 16), RegisterType::RegFPR, ValueType::Float}
-#define REG_VEC_H(i) {RegisterID::REG16_H##i,  "h"#i, 2,  (i * 16), RegisterType::RegFPR, ValueType::UInt16}
-#define REG_VEC_B(i) {RegisterID::REG8_B##i,   "b"#i, 1,  (i * 16), RegisterType::RegFPR, ValueType::UInt8}
+#define REG_VEC_V(i) {RegisterID::REG128_V##i, "v"#i, 16, (i * 16), RegisterType::RegFPR}
+#define REG_VEC_D(i) {RegisterID::REG64_D##i,  "d"#i, 8,  (i * 16), RegisterType::RegFPR}
+#define REG_VEC_S(i) {RegisterID::REG32_S##i,  "s"#i, 4,  (i * 16), RegisterType::RegFPR}
+#define REG_VEC_H(i) {RegisterID::REG16_H##i,  "h"#i, 2,  (i * 16), RegisterType::RegFPR}
+#define REG_VEC_B(i) {RegisterID::REG8_B##i,   "b"#i, 1,  (i * 16), RegisterType::RegFPR}
 
 const struct RegisterInfo g_register_table[] =
 {
@@ -121,60 +112,88 @@ const struct RegisterInfo g_register_table[] =
     REG_VEC_B(24), REG_VEC_B(25), REG_VEC_B(26), REG_VEC_B(27), REG_VEC_B(28), REG_VEC_B(29), REG_VEC_B(30), REG_VEC_B(31),
 
     // --- Special Purpose Registers ---
-    {RegisterID::REG64_PC,      "pc",     8, (32 * 8), RegisterType::RegGPR, ValueType::UInt64},
-    {RegisterID::REG64_SP,      "sp",     8, (31 * 8), RegisterType::RegGPR, ValueType::UInt64},
-    {RegisterID::REG64_PSTATE,  "pstate", 8, (33 * 8), RegisterType::RegGPR, ValueType::UInt64},
-    {RegisterID::REG32_FPSR,    "fpsr",   4, offsetof(struct user_fpsimd_state, fpsr), RegisterType::RegFPR, ValueType::UInt32},
-    {RegisterID::REG32_FPCR,    "fpcr",   4, offsetof(struct user_fpsimd_state, fpcr), RegisterType::RegFPR, ValueType::UInt32}
+    {RegisterID::REG64_PC,      "pc",     8, (32 * 8), RegisterType::RegGPR},
+    {RegisterID::REG64_SP,      "sp",     8, (31 * 8), RegisterType::RegGPR},
+    {RegisterID::REG64_PSTATE,  "pstate", 8, (33 * 8), RegisterType::RegGPR},
+    {RegisterID::REG32_FPSR,    "fpsr",   4, offsetof(struct user_fpsimd_state, fpsr), RegisterType::RegFPR},
+    {RegisterID::REG32_FPCR,    "fpcr",   4, offsetof(struct user_fpsimd_state, fpcr), RegisterType::RegFPR}
 };
 
 const std::size_t g_register_table_size =
     sizeof(g_register_table) / sizeof(g_register_table[0]);
 
-template <typename T>
-const RegisterInfo *get_register_info(T key)
+const RegisterInfo *get_register_info(RegisterID key)
 {
-    if constexpr (std::is_same_v<T, RegisterID>)
+    std::size_t index = static_cast<std::size_t>(key);
+    if (index < g_register_table_size)
     {
-        std::size_t index = static_cast<std::size_t>(key);
-        if (index < g_register_table_size)
+        #ifdef DEBUG_MODE
+        if (static_cast<std::size_t>(g_register_table[index].id) != index)
         {
-            #ifdef DEBUG_MODE
-            if (static_cast<std::size_t>(g_register_table[index].id) != index)
-            {
-                throw std::logic_error(
-                    "Register ID and index table mismatch at index " + 
-                    std::to_string(index));
-            }
-            #endif
-            return &g_register_table[index];
+            throw std::logic_error(
+                "Register ID and index table mismatch at index " + 
+                std::to_string(index));
         }
-        throw std::logic_error("Register ID out of table bounds: " + std::to_string(index));
+        #endif
+        return &g_register_table[index];
     }
-    if constexpr(std::is_same_v<T, std::string_view>)
+    throw std::invalid_argument("Register ID out of table bounds: " + std::to_string(index));
+}
+
+const RegisterInfo *get_register_info(std::string_view key)
+{
+    for (std::size_t curr = 0; curr < g_register_table_size; ++curr)
     {
-        for (std::size_t curr = 0; curr < g_register_table_size; curr++)
-        {
-            if (key == g_register_table[curr].name)
-                return &g_register_table[curr];
-        }
-        throw std::invalid_argument("Invalid register name " + std::string(key));
+        if (key == g_register_table[curr].name)
+            return &g_register_table[curr];
     }
+    throw std::invalid_argument("Invalid register name " + std::string(key));
+}
+
+RegisterType get_register_type(RegisterID key)
+{
+    return get_register_info(key)->type;
+}
+
+RegisterType get_register_type(std::string_view key)
+{
+    return get_register_info(key)->type;
 }
 
 std::string_view
 get_register_name(RegisterID id)
 {
     return get_register_info(id)->name;
+}
+
+RegisterID
+get_register_id(std::string_view name)
+{
+    return get_register_info(name)->id;
 }
 
 #elif defined(__x86_64__)
 
-template <typename T>
-const RegisterInfo *get_register_info(T key)
+const RegisterInfo *get_register_info(RegisterID key)
 {
     (void) key;
-    throw std::invalid_argument("Register access not implemented for x86");
+    throw std::logic_error("Register access not implemented for x86");
+}
+
+const RegisterInfo *get_register_info(std::string_view key)
+{
+    (void) key;
+    throw std::logic_error("Register access not implemented for x86");
+}
+
+const RegisterType get_register_type(RegisterID key)
+{
+    return get_register_info(key)->type;
+}
+
+const RegisterType get_register_type(std::string_view key)
+{
+    return get_register_info(key)->type;
 }
 
 std::string_view
@@ -183,24 +202,27 @@ get_register_name(RegisterID id)
     return get_register_info(id)->name;
 }
 
+RegisterID
+get_register_id(std::string_view name)
+{
+    return get_register_info(name)->id;
+}
+
 #endif
 
-namespace
-{
-
 std::uint8_t *
-register_offset(const RegisterInfo *info, Registers& reg_state)
+Registers::register_offset(const RegisterInfo *info)
 {
     std::uint8_t *offset = nullptr;
 
     if (info->type == RegisterType::RegGPR)
     {
-        offset = static_cast<std::uint8_t *>(reg_state.gpr_ptr());
+        offset = static_cast<std::uint8_t *>(gpr_ptr());
         return (offset + info->offset);
     }
     else if (info->type == RegisterType::RegFPR)
     {
-        offset = static_cast<std::uint8_t *>(reg_state.fpr_ptr());
+        offset = static_cast<std::uint8_t *>(fpr_ptr());
         return (offset + info->offset);
     }
     throw std::logic_error("Invalid register type in register_offset");
@@ -212,119 +234,184 @@ parse_register_token(const RegisterInfo* info, std::string_view token)
     if (token.empty())
         throw std::invalid_argument("Empty register value");
 
-    const bool is_float_type =
-        (info->valtype == ValueType::Float ||
-         info->valtype == ValueType::Double);
-
-    if (is_float_type)
+    auto size_check_and_return =
+    [&](uint64_t val, bool is_negative) -> RegisterValue
     {
-        if (token.back() == 'f' || token.back() == 'F')
-            token.remove_suffix(1);
+        switch (info->size)
+        {
+            case 1:
+                if (!is_negative && val > UINT8_MAX)
+                    throw std::invalid_argument("Value too large for 8-bit register ");
+                if (is_negative && static_cast<int64_t>(val) < INT8_MIN)
+                    throw std::invalid_argument("Negative value too small for 8-bit register");
+                return static_cast<uint8_t>(val);
+            case 2:
+                if (!is_negative && val > UINT16_MAX)
+                    throw std::invalid_argument("Value too large for 16-bit register");
+                if (is_negative && static_cast<int64_t>(val) < INT16_MIN)
+                    throw std::invalid_argument("Negative value too small for 16-bit register");
+                return static_cast<uint16_t>(val);
+            case 4:
+                if (!is_negative && val > UINT32_MAX)
+                    throw std::invalid_argument("Value too large for 32-bit register");
+                if (is_negative && static_cast<int64_t>(val) < INT32_MIN)
+                    throw std::invalid_argument("Negative value too small for 32-bit register");
+                return static_cast<uint32_t>(val);
+            case 8:  return val;
+            case 16: return static_cast<__uint128_t>(val);
+            default: throw std::logic_error("Unsupported register size");
+        }
+    };
 
-        // C++17 doesn't have a reliable float from_chars across all compilers yet.
-        // We convert to std::string once to ensure null-termination for stod/stof.
-        std::string s_token{token};
+    auto size_check_float =
+    [&](float val) -> RegisterValue
+    {
+        switch (info->size)
+        {
+            case 4:  return val;
+            case 8:  return static_cast<double>(val);
+            case 16: return static_cast<double>(val);
+            default: throw std::invalid_argument("Float too large for register ");
+        }
+    };
+
+    auto size_check_double = [&](double val) -> RegisterValue
+    {
+        if (info->size < 8)
+            throw std::invalid_argument("Double too large for register ");
+        return val;
+    };
+
+    if (token.size() > 2 && token[0] == '0' &&
+       (token[1] == 'x' || token[1] == 'X'))
+    {
+        if (token.find('p') != std::string_view::npos ||
+            token.find('P') != std::string_view::npos)
+        {
+            if (info->type != RegisterType::RegFPR)
+                throw std::invalid_argument("Cannot assign float to non FPR register");
+
+            bool is_float = (token.back() == 'f' || token.back() == 'F');
+            std::string buf(is_float ? token.substr(0, token.size() - 1) : token);
+            try
+            {
+                if (is_float) return size_check_float(std::stof(buf));
+                else          return size_check_double(std::stod(buf));
+            }
+            catch (const std::out_of_range&)
+            {
+                throw std::invalid_argument("Hex float out of range");
+            }
+            catch (const std::invalid_argument&)
+            { 
+                throw std::invalid_argument("Invalid hex float");
+            }
+
+        }
+
+        uint64_t val = 0;
+        std::string_view hex = token.substr(2);
+        auto [ptr, ec] = std::from_chars(hex.data(), hex.data() + hex.size(), val, 16);
+        if (ec == std::errc::result_out_of_range)
+            throw std::invalid_argument("Hex value out of range");
+        if (ec != std::errc{} || ptr != hex.data() + hex.size())
+            throw std::invalid_argument("Invalid hex value");
+
+        return size_check_and_return(val, false);
+    }
+
+    if (token.find('.') != std::string_view::npos)
+    {
+        if (info->type != RegisterType::RegFPR)
+            throw std::invalid_argument("Cannot assign float to non-FPR register");
+
+        bool is_float = (token.back() == 'f' || token.back() == 'F');
+        std::string buf(is_float ? token.substr(0, token.size() - 1) : token);
         try
         {
-            if (info->valtype == ValueType::Float) return std::stof(s_token);
-            return std::stod(s_token); // stod/stof handle hexfloat (0x1.p+3) automatically
+            if (is_float) return size_check_float(std::stof(buf));
+            else          return size_check_double(std::stod(buf));
         }
-        catch (...)
+        catch (const std::out_of_range&)
         {
-            throw std::invalid_argument("Invalid floating point: " + s_token);
+            throw std::invalid_argument("Float out of range");
+        }
+        catch (const std::invalid_argument&)
+        {
+            throw std::invalid_argument("Invalid float");
         }
     }
 
-    int base = 10;
-    bool negate = false;
-    if (!token.empty() && token[0] == '-')
+    if (token[0] == '-')
     {
-        negate = true;
-        token.remove_prefix(1);
+        int64_t val = 0;
+        auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), val);
+        if (ec == std::errc::result_out_of_range)
+            throw std::invalid_argument("Signed value out of range");
+        if (ec != std::errc{} || ptr != token.data() + token.size())
+            throw std::invalid_argument("Invalid signed value");
+
+        return size_check_and_return(static_cast<uint64_t>(val), true);
     }
-    else if (token.size() > 2 && token[0] == '0' && (token[1] == 'x'))
+
+    if (token[0] == '0' && token.size() > 1)
     {
-        base = 16;
-        token.remove_prefix(2);
-    } else if (token.size() > 1 && token[0] == '0') {
-        base = 8;
+        uint64_t val = 0;
+        std::string_view oct = token.substr(1);
+        auto [ptr, ec] = std::from_chars(oct.data(), oct.data() + oct.size(), val, 8);
+        if (ec == std::errc::result_out_of_range)
+            throw std::invalid_argument("Octal value out of range");
+        if (ec != std::errc{} || ptr != oct.data() + oct.size())
+            throw std::invalid_argument("Invalid octal value");
+
+        return size_check_and_return(static_cast<uint64_t>(val), false);
     }
 
     uint64_t val = 0;
-    auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), val, base);
-
+    auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), val);
+    if (ec == std::errc::result_out_of_range)
+        throw std::invalid_argument("Value out of range");
     if (ec != std::errc{} || ptr != token.data() + token.size())
-        throw std::invalid_argument("Invalid numeric token: " + std::string(token));
-
-    if (negate)
-        val = -val; 
-
-    auto mask_and_return = [&](auto limit, auto type_tag) -> RegisterValue
-    {
-        using T = decltype(type_tag);
-        // Ensure positive overflow is caught, but allow bit-pattern for negatives
-        if (!negate && val > limit) 
-            throw std::invalid_argument("Value too large for " + std::string(info->name));
-        return static_cast<T>(val & limit);
-    };
-
-    switch (info->valtype) {
-        case ValueType::UInt8:   return mask_and_return(0xFFULL, uint8_t{});
-        case ValueType::UInt16:  return mask_and_return(0xFFFFULL, uint16_t{});
-        case ValueType::UInt32:  return mask_and_return(0xFFFFFFFFULL, uint32_t{});
-        case ValueType::UInt64:  return val;
-        case ValueType::UInt128: return static_cast<__uint128_t>(val);
-        default: throw std::logic_error("Unsupported register type");
-    }
+        throw std::invalid_argument("Invalid value");
+    return size_check_and_return(static_cast<uint64_t>(val), false);
 }
 
-RegisterValue
-read_common(const RegisterInfo* info, std::uint8_t *src_addr)
+RegisterValue Registers::read(const RegisterInfo* info)
 {
     // Can't use bit_cast since I am using C++17
     // Using reinterpret_cast on unaligned memory
     // can cause a SIGBUS crash on AArch64
-    switch (info->valtype)
+
+    std::uint8_t *src_addr = register_offset(info);
+    switch (info->size)
     {
-        case ValueType::UInt8:
+        case 1:
         {
             uint8_t val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
-        case ValueType::UInt16:
+        case 2:
         {
             uint16_t val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
-        case ValueType::UInt32:
+        case 4:
         {
             uint32_t val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
-        case ValueType::UInt64:
+        case 8:
         {
             uint64_t val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
-        case ValueType::UInt128:
+        case 16:
         {
             __uint128_t val;
-            std::memcpy(&val, src_addr, sizeof(val));
-            return val;
-        }
-        case ValueType::Float:
-        {
-            float val;
-            std::memcpy(&val, src_addr, sizeof(val));
-            return val;
-        }
-        case ValueType::Double:
-        {
-            double val;
             std::memcpy(&val, src_addr, sizeof(val));
             return val;
         }
@@ -337,72 +424,43 @@ read_common(const RegisterInfo* info, std::uint8_t *src_addr)
     }
 }
 
-void
-write_common(const RegisterInfo* info, std::uint8_t *dest_addr, RegisterValue val)
+void Registers::write(const RegisterInfo* info, RegisterValue val)
 {
+    std::uint8_t *dest_addr = register_offset(info);
     auto func = [&](auto &&arg) -> void
     {
-        using T = std::decay_t<decltype(arg)>;
-        
+        if (sizeof(arg) > info->size)
+            throw std::invalid_argument("Value too large for " + std::string(info->name));
         // AArch64 GPR Zero-extension rule (W -> X)
-        if (info->type == RegisterType::RegGPR && info->size == 8 && sizeof(T) == 4) {
-            uint64_t extended = static_cast<uint32_t>(arg); // zero extend
-            std::memcpy(dest_addr, &extended, 8);
+        if (info->type == RegisterType::RegGPR)
+        {
+            std::memset(dest_addr, 0, 8);
+            std::memcpy(dest_addr, &arg, sizeof(arg));
             return;
         }
 
-        if (sizeof(T) > info->size)
-            throw std::invalid_argument("Value too large for " + std::string(info->name));
-
-        std::memcpy(dest_addr, &arg, sizeof(T));
+        std::memcpy(dest_addr, &arg, sizeof(arg));
     };
     std::visit(func, val);
 }
 
-} /* namespace close */
-
-RegisterValue Registers::read(RegisterID reg_id)
+void Registers::write(const RegisterInfo* info, std::string_view val)
 {
-    const RegisterInfo *info = get_register_info(reg_id);
-    std::uint8_t *src_addr = register_offset(info, *this);
+    std::uint8_t *dest_addr = register_offset(info);
+    RegisterValue parsed_val = parse_register_token(info, val);
+    auto func = [&](auto &&arg) -> void
+    {
+        if (sizeof(arg) > info->size)
+            throw std::invalid_argument("Value too large for " + std::string(info->name));
+        // AArch64 GPR Zero-extension rule (W -> X)
+        if (info->type == RegisterType::RegGPR)
+        {
+            std::memset(dest_addr, 0, 8);
+            std::memcpy(dest_addr, &arg, sizeof(arg));
+            return;
+        }
 
-    return read_common(info, src_addr);
-}
-
-RegisterValue Registers::read(std::string_view reg_name)
-{
-    const RegisterInfo *info = get_register_info(reg_name);
-    std::uint8_t *src_addr = register_offset(info, *this);
-
-    return read_common(info, src_addr);
-}
-
-void Registers::write(std::string_view reg_name, RegisterValue val)
-{
-    const RegisterInfo *info = get_register_info(reg_name);
-    std::uint8_t *dest_addr = register_offset(info, *this);
-    write_common(info, dest_addr, val);
-}
-
-void Registers::write(std::string_view reg_name, std::string_view val_str)
-{
-    const RegisterInfo *info = get_register_info(reg_name);
-    std::uint8_t *dest_addr = register_offset(info, *this);
-    RegisterValue val = parse_register_token(info, val_str);
-    write_common(info, dest_addr, val);
-}
-
-void Registers::write(RegisterID reg_id, RegisterValue val)
-{
-    const RegisterInfo *info = get_register_info(reg_id);
-    std::uint8_t *dest_addr = register_offset(info, *this);
-    write_common(info, dest_addr, val);
-}
-
-void Registers::write(RegisterID reg_id, std::string_view val_str)
-{
-    const RegisterInfo *info = get_register_info(reg_id);
-    std::uint8_t *dest_addr = register_offset(info, *this);
-    RegisterValue val = parse_register_token(info, val_str);
-    write_common(info, dest_addr, val);
+        std::memcpy(dest_addr, &arg, sizeof(arg));
+    };
+    std::visit(func, parsed_val);
 }

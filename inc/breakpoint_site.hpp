@@ -22,42 +22,51 @@
  *
  */
 
-#ifndef BKPT_APP_COMMANDS_HPP
-#define BKPT_APP_COMMANDS_HPP
+#ifndef BKPT_LIB_BREAKPOINT_SITE_H
+#define BKPT_LIB_BREAKPOINT_SITE_H
 
-#include <string_view>
-#include <utility>
-#include <vector>
+#include <cstdint>
+#include <cstddef>
 
-enum class Action
+using virt_addr = std::uint64_t;
+
+class Process;
+
+class BreakpointSite
 {
-    Invalid = 0,
-    Ambiguous,
-    ReadRegAll,
-    ReadRegGPR,
-    ReadReg,
-    WriteReg,
-    Incomplete,
-    Continue,
-    StepInst,
-    BPSiteList,
-    BPSiteSet,
-    BPSiteEn,
-    BPSiteDis,
-    BPSiteDel,
-    Help,
-    Quit,
-    None,
-};
+public:
+    BreakpointSite() = delete;
+    BreakpointSite(const BreakpointSite &) = delete;
+    BreakpointSite &operator=(const BreakpointSite &) = delete;
 
-struct Command
-{
-    std::string_view keyword;
-    Action action;
-    const Command *children;
-};
+    using id_type = std::uint32_t;
+    id_type id() const { return id_; }
 
-std::pair<Action, std::vector<std::string_view>>
-process_line(std::string_view line);
+    void enable();
+    void disable();
+
+    bool is_enabled() const { return is_enabled_; }
+    virt_addr address() const { return address_; }
+
+    bool at_address(virt_addr addr) const
+    {
+        return address_ == addr;
+    }
+
+    bool in_range(virt_addr low, virt_addr high) const
+    {
+        return (low <= address_) && (high > address_);
+    }
+
+private:
+    friend Process;
+    BreakpointSite(Process &proc, virt_addr address);
+
+    id_type id_;
+    bool is_enabled_;
+    virt_addr address_;
+    std::uint64_t saved_data_;
+    Process* process_;
+};
 
 #endif

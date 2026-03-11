@@ -40,6 +40,7 @@ add_library(breakpoint STATIC
     src/process.cpp
     src/pipe.cpp
     src/registers.cpp
+    src/breakpoint_site.cpp
 )
 
 # Include directories:
@@ -70,12 +71,14 @@ target_compile_options(bkpt PRIVATE -Wall -Wextra -Wpedantic)
 enable_testing()
 
 add_executable(two_seconds test/guinea/two_seconds.c)
-add_executable(outta_here test/guinea/outta_here.c)
-add_executable(asm_magic test/guinea/asm_magic.c)
+add_executable(outta_here  test/guinea/outta_here.c)
+add_executable(asm_magic   test/guinea/asm_magic.c)
+add_executable(hello       test/guinea/hello.c)
 
-target_compile_options(two_seconds PRIVATE -g)
-target_compile_options(outta_here PRIVATE -g)
-target_compile_options(asm_magic PRIVATE -g)
+target_compile_options(two_seconds PRIVATE -g -O0)
+target_compile_options(outta_here  PRIVATE -g -O0)
+target_compile_options(asm_magic   PRIVATE -g -O0)
+target_compile_options(hello       PRIVATE -g -O0)
 
 add_executable(test_launch test/test_launch.cpp)
 target_include_directories(test_launch PRIVATE inc test)
@@ -93,6 +96,10 @@ add_executable(test_register test/test_register.cpp)
 target_include_directories(test_register PRIVATE inc test)
 target_link_libraries(test_register PRIVATE breakpoint Catch2::Catch2WithMain)
 
+add_executable(test_breakpoint test/test_breakpoint.cpp)
+target_include_directories(test_breakpoint PRIVATE inc test)
+target_link_libraries(test_breakpoint PRIVATE breakpoint Catch2::Catch2WithMain)
+
 add_test(NAME TestGuinea1  COMMAND two_seconds)
 add_test(NAME TestGuinea2  COMMAND outta_here)
 
@@ -100,3 +107,4 @@ add_test(NAME TestLaunch   COMMAND test_launch)
 add_test(NAME TestAttach   COMMAND test_attach)
 add_test(NAME TestCommands COMMAND test_commands)
 add_test(NAME TestRegister COMMAND test_register)
+add_test(NAME TestBreakpoint COMMAND test_breakpoint)
