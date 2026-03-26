@@ -27,6 +27,7 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/socket.h>
 
 Pipe::Pipe(bool close_on_exec)
 {
@@ -125,5 +126,95 @@ void Pipe::write(std::string_view buf)
 
         data_ptr += ret;
         remaining -= ret;
+    }
+}
+
+SocketPair::SocketPair()
+{
+    int ret = 0;
+    ret = socketpair(AF_UNIX, SOCK_STREAM, 0, sv_);
+    if (ret < 0)
+    {
+        Error::send_errno("SocketPair creation failed");
+    }
+}
+
+SocketPair::~SocketPair()
+{
+    close_child();
+    close_parent();
+}
+
+SocketPair::SocketPair(SocketPair &&other) noexcept
+{
+    sv_[child_sock] = other.sv_[child_sock];
+    sv_[parent_sock] = other.sv_[parent_sock];
+
+    other.sv_[child_sock] = -1;
+    other.sv_[parent_sock] = -1;
+}
+
+SocketPair &SocketPair::operator=(SocketPair &&other) noexcept
+{
+    if (this != &other)
+    {
+        close_child();
+        close_parent();
+
+        // Steal from other
+        sv_[child_sock] = other.sv_[child_sock];
+        sv_[parent_sock] = other.sv_[parent_sock];
+
+        // Invalidate other
+        other.sv_[child_sock] = -1;
+        other.sv_[parent_sock] = -1;
+    }
+    return *this;
+}
+
+void SocketPair::close_child()
+{
+    if (sv_[child_sock] != -1)
+    {
+        close(sv_[child_sock] );
+        sv_[child_sock] = -1;
+    }
+}
+
+void SocketPair::close_parent()
+{
+    if (sv_[parent_sock] != -1)
+    {
+        close(sv_[parent_sock]);
+        sv_[parent_sock] = -1;
+    }
+}
+
+int SocketPair::release_parent()
+{
+    int ret = sv_[parent_sock];
+    sv_[parent_sock] = -1;
+    return ret;
+}
+
+void SocketPair::dup_std_fds()
+{
+    int ret = 0;
+    ret = ::dup2(sv_[child_sock], STDIN_FILENO);
+    if (ret < 0)
+    {
+        Error::send_errno("dup2 STDIN creation failed");   
+    }
+
+    ret = ::dup2(sv_[child_sock], STDOUT_FILENO);
+    if (ret < 0)
+    {
+        Error::send_errno("dup2 STDOUT creation failed");   
+    }
+
+    ret = ::dup2(sv_[child_sock], STDERR_FILENO);
+    if (ret < 0)
+    {
+        Error::send_errno("dup2 STDERR creation failed");   
     }
 }

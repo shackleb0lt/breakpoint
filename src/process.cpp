@@ -182,7 +182,8 @@ void Process::resume()
 }
 
 std::unique_ptr<Process>
-Process::launch(std::vector<std::string_view> &exec_args)
+Process::launch(std::vector<std::string_view> &exec_args,
+    std::optional<int*> comm)
 {
     if (exec_args.empty())
     {
@@ -190,6 +191,7 @@ Process::launch(std::vector<std::string_view> &exec_args)
     }
 
     Pipe channel(true);
+    SocketPair channel1;
     pid_t debug_pid = ::fork();
 
     if (debug_pid < 0)
@@ -202,6 +204,13 @@ Process::launch(std::vector<std::string_view> &exec_args)
         channel.close_read();
 
         personality(ADDR_NO_RANDOMIZE);
+
+        if (comm)
+        {
+            channel1.close_parent();
+            channel1.dup_std_fds();
+            channel1.close_child();
+        }
 
         if (::ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
         {
@@ -248,6 +257,9 @@ Process::launch(std::vector<std::string_view> &exec_args)
 
     std::unique_ptr<Process> proc(new Process(debug_pid, true));
     proc->wait();
+
+    if (comm.has_value())
+        **comm = channel1.release_parent();
 
     // Launched process should ideally stop execution
     // Due to a SIGTRAP recived just after execvp
@@ -340,6 +352,68 @@ Process::create_breakpoint_site(virt_addr addr)
     }
     return breakpoint_sites_.push(
         std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, addr)));
+}
+
+std::vector<std::uint8_t>
+Process::read_memory(virt_addr address, std::size_t size) const
+{
+    const static int PAGE_SIZE = sysconf(_SC_PAGESIZE);
+    if (PAGE_SIZE <= 0)
+    {
+        Error::send_errno("Failed to retrieve page size");
+    }
+
+    std::vector<std::uint8_t> res(size);
+    iovec local_desc;
+    local_desc.iov_base = reinterpret_cast<void *>(res.data());
+    local_desc.iov_len = res.size();
+
+    std::vector<iovec> remote_descs;
+    while (size > 0)
+    {
+        iovec temp;
+        
+        std::uint64_t till_next_page = PAGE_SIZE - (address & (PAGE_SIZE - 1));;
+        uint64_t chunk_size = std::min(size, till_next_page);
+        temp.iov_base = reinterpret_cast<void *>(address);
+        temp.iov_len = chunk_size;
+        remote_descs.push_back(temp);
+        size -= chunk_size;
+        address += chunk_size;
+    }
+
+    if (process_vm_readv(pid_, &local_desc, 1, remote_descs.data(),
+        remote_descs.size(), 0) < 0)
+    {
+        Error::send_errno("Could not read process memory");
+    }
+    return res;
+}
+
+void Process::write_memory(virt_addr address, Span<const std::uint8_t> data)
+{
+    std::size_t written = 0;
+    while (written < data.size())
+    {
+        std::size_t remain = data.size() - written;
+        std::uint64_t qword;
+        if (remain > 8)
+        {
+            std::memcpy(&qword, data.begin() + written, sizeof(qword));
+        }
+        else
+        {
+            std::vector<std::uint8_t> read = read_memory(address + written, 8);
+            auto word_data = reinterpret_cast<char*>(&qword);
+            std::memcpy(word_data, data.begin() + written, remain);
+            std::memcpy(word_data + remain, read.data() + remain, 8 - remain);
+        }
+        if (ptrace(PTRACE_POKEDATA, pid_, address + written, qword) < 0)
+        {
+            Error::send_errno("Failed to write memory");
+        }
+        written += 8;
+    }
 }
 
 #ifdef DEBUG_MODE

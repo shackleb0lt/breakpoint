@@ -22,45 +22,34 @@
  *
  */
 
-#ifndef BKPT_APP_COMMANDS_HPP
-#define BKPT_APP_COMMANDS_HPP
+#ifndef BKPT_LIB_TYPES_H
+#define BKPT_LIB_TYPES_H
 
-#include <string_view>
-#include <utility>
+#include <cstdint>
 #include <vector>
 
-enum class Action
-{
-    Invalid = 0,
-    Ambiguous,
-    ReadRegAll,
-    ReadRegGPR,
-    ReadReg,
-    WriteReg,
-    MemReadDef,
-    MemReadCnt,
-    MemWrite,
-    Incomplete,
-    Continue,
-    StepInst,
-    BPSiteList,
-    BPSiteSet,
-    BPSiteEn,
-    BPSiteDis,
-    BPSiteDel,
-    Help,
-    Quit,
-    None,
-};
+using virt_addr = std::uint64_t;
 
-struct Command
+// Need to write custom span class since C++17
+// Analohous to string view but for any type
+template <class T>
+class Span
 {
-    std::string_view keyword;
-    Action action;
-    const Command *children;
-};
+public:
+    Span() = default;
+    Span(T *data, std::size_t size) : data_(data), size_(size) {}
+    Span(T *data, T *end) : data_(data), size_(end - data) {}
 
-std::pair<Action, std::vector<std::string_view>>
-process_line(std::string_view line);
+    template <class U>
+    Span(const std::vector<U> &vec) : data_(vec.data()), size_(vec.size()) {}
+    T *begin() const { return data_; }
+    T *end() const { return data_ + size_; }
+    std::size_t size() const { return size_; }
+    T &operator[](std::size_t n) { return *(data_ + n); }
+
+private:
+    T *data_ = nullptr;
+    std::size_t size_ = 0;
+};
 
 #endif

@@ -50,6 +50,32 @@ const Command cmd_register[] = {
     {"",            Action::Invalid,    nullptr}
 };
 
+const Command cmd_memory_write_address[] = {
+    {"",            Action::MemWrite, nullptr},
+    {"",            Action::Invalid,    nullptr}
+};
+
+const Command cmd_memory_read_address[] = {
+    {"",            Action::MemReadCnt, nullptr},
+    {"",            Action::Invalid,    nullptr}
+};
+
+const Command cmd_memory_read[] = {
+    {"",            Action::MemReadDef, cmd_memory_read_address},
+    {"",            Action::Invalid,    nullptr}
+};
+
+const Command cmd_memory_write[] = {
+    {"",            Action::Incomplete, cmd_memory_write_address},
+    {"",            Action::Invalid,    nullptr}
+};
+
+const Command cmd_memory[] = {
+    {"read",        Action::Incomplete, cmd_memory_read},
+    {"write",       Action::Incomplete, cmd_memory_write},
+    {"",            Action::Invalid,    nullptr}
+};
+
 const Command cmd_breakpoint_set[] = {
     {"",            Action::BPSiteSet,  nullptr},
     {"",            Action::Invalid,    nullptr}
@@ -82,10 +108,11 @@ const Command cmd_breakpoint[] = {
 const Command top_level[] = {
     {"breakpoint",  Action::Incomplete, cmd_breakpoint},
     {"continue",    Action::Continue,   nullptr},
-    {"step",        Action::StepInst,   nullptr},
     {"help",        Action::Help,       nullptr},
+    {"memory",      Action::Incomplete, cmd_memory},
     {"register",    Action::Incomplete, cmd_register},
     {"quit",        Action::Quit,       nullptr},
+    {"step",        Action::StepInst,   nullptr},
     {"",            Action::Invalid,    nullptr}
 };
 

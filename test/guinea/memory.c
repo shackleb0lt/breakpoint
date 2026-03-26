@@ -22,45 +22,26 @@
  *
  */
 
-#ifndef BKPT_APP_COMMANDS_HPP
-#define BKPT_APP_COMMANDS_HPP
+#include <stdio.h>
+#include <sys/signal.h>
+#include <unistd.h>
 
-#include <string_view>
-#include <utility>
-#include <vector>
-
-enum class Action
+int main()
 {
-    Invalid = 0,
-    Ambiguous,
-    ReadRegAll,
-    ReadRegGPR,
-    ReadReg,
-    WriteReg,
-    MemReadDef,
-    MemReadCnt,
-    MemWrite,
-    Incomplete,
-    Continue,
-    StepInst,
-    BPSiteList,
-    BPSiteSet,
-    BPSiteEn,
-    BPSiteDis,
-    BPSiteDel,
-    Help,
-    Quit,
-    None,
-};
+    unsigned long long a = 0xcafecafedeaddead;
+    void *a_address = &a;
 
-struct Command
-{
-    std::string_view keyword;
-    Action action;
-    const Command *children;
-};
+    write(STDOUT_FILENO, &a_address, sizeof(void *));
+    fflush(stdout);
+    raise(SIGTRAP);
 
-std::pair<Action, std::vector<std::string_view>>
-process_line(std::string_view line);
+    char b[16] = {0};
+    void *b_address = b;
+    write(STDOUT_FILENO, &b_address, sizeof(void *));
+    fflush(stdout);
+    raise(SIGTRAP);
 
-#endif
+    printf("%s", b);
+
+    return 0;
+}

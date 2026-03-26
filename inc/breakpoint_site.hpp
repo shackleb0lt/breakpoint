@@ -25,10 +25,8 @@
 #ifndef BKPT_LIB_BREAKPOINT_SITE_H
 #define BKPT_LIB_BREAKPOINT_SITE_H
 
-#include <cstdint>
 #include <cstddef>
-
-using virt_addr = std::uint64_t;
+#include "types.hpp"
 
 class Process;
 

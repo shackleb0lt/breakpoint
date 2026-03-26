@@ -304,4 +304,5 @@ TEST_CASE("Program Counter invalid acccess")
 
 /*
 asm_magic w 0xcafebeefdeadbabe 0xbeadfade 0xface 0xbe 0x1.a2b3c4d5e6f78p+5 0x1.9f7e5dp-3f
+asm_magic r 0xcafebeefdeadbabe 0xbeadfade 0xface 0xbe 0x1.a2b3c4d5e6f78p+5 0x1.9f7e5dp-3f
 */

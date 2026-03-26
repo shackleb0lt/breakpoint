@@ -59,4 +59,28 @@ private:
     int fds_[2] = {-1, -1};
 };
 
+class SocketPair
+{
+public:
+    explicit SocketPair();
+    ~SocketPair();
+
+    SocketPair(const SocketPair &) = delete;
+    SocketPair &operator=(const SocketPair &) = delete;
+
+    SocketPair(SocketPair &&other) noexcept;
+    SocketPair &operator=(SocketPair &&other) noexcept;
+
+    int release_parent();
+    void dup_std_fds();
+
+    void close_child();
+    void close_parent();
+
+private:
+    static constexpr unsigned child_sock = 0;
+    static constexpr unsigned parent_sock = 1;
+    int sv_[2] = {-1, -1};
+};
+
 #endif

@@ -106,6 +106,40 @@ std::uint64_t to_positive_integral(std::string_view token)
 
 }
 
+std::vector<std::uint8_t>
+parse_vector(std::string_view token)
+{
+    auto invalid = []{ throw std::invalid_argument("Invalid format"); };
+    std::vector<std::uint8_t> bytes;
+    const char* c = token.data();
+    const char* end = token.data() + token.size();
+
+    if (c >= end || *c != '[') invalid();
+    c++;
+
+    while (c < end && *c != ']')
+    {
+        // skip whitespace and commas
+        while (c < end && (*c == ' ' || *c == ',')) c++;
+        if (c >= end || *c == ']') break;
+
+        // expect 0x prefix
+        if (c + 2 >= end || *c != '0' || (*(c+1) != 'x' && *(c+1) != 'X'))
+            invalid();
+        c += 2;
+
+        uint8_t val = 0;
+        auto [ptr, ec] = std::from_chars(c, end, val, 16);
+        if (ec != std::errc{}) invalid();
+        c = ptr;
+
+        bytes.push_back(val);
+    }
+
+    if (c >= end || *c != ']') invalid();
+    return bytes;
+}
+
 std::string
 display_register(const RegisterID id, const RegisterValue& val)
 {
@@ -162,6 +196,20 @@ display_register(const RegisterID id, const RegisterValue& val)
     }, val);
 
     return output;
+}
+
+void
+display_memory(std::vector<std::uint8_t> &data, virt_addr addr)
+{
+    for (std::size_t i = 0; i < data.size(); i += 16)
+    {
+        fmt::print("{:#016x}: ", addr + i);
+        auto end = std::min(i + 16, data.size());
+        for (std::size_t j = i; j < end; ++j)
+            fmt::print("{:02x} ", data[j]);
+
+        fmt::print("\n");
+    }
 }
 
 bool handle_command(std::string_view line, ProcessPtr &proc)
@@ -235,6 +283,25 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
         else if (action == Action::WriteReg)
         {
             proc->registers().write(tokens[2], tokens[3]);
+        }
+        else if (action == Action::MemReadDef)
+        {
+            virt_addr address = to_positive_integral(tokens[2]);
+            auto data = proc->read_memory(address, 32);
+            display_memory(data, address);
+        }
+        else if (action == Action::MemReadCnt)
+        {
+            virt_addr address = to_positive_integral(tokens[2]);
+            uint64_t count = to_positive_integral(tokens[3]);
+            auto data = proc->read_memory(address, count);
+            display_memory(data, address);
+        }
+        else if (action == Action::MemWrite)
+        {
+            virt_addr address = to_positive_integral(tokens[2]);
+            auto data = parse_vector(tokens[3]);
+            proc->write_memory(address, {data.data(), data.size()});
         }
         else if (action == Action::BPSiteList)
         {

@@ -30,9 +30,11 @@
 #include <cstring>
 #include <iostream>
 #include <iomanip>
+#include <optional>
 #include <filesystem>
 
 #include <sys/wait.h>
+#include <sys/socket.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <elf.h>
@@ -130,7 +132,8 @@ void process_destroy(pid_t pid)
     waitpid(pid, &status, 0);
 }
 
-pid_t process_create(char *const argv[])
+pid_t process_create(char *const argv[],
+    std::optional<int*> comm = std::nullopt)
 {
     if (argv == nullptr || argv[0] == nullptr)
         return -1;
@@ -141,17 +144,43 @@ pid_t process_create(char *const argv[])
         return -1;
     }
 
+    int sv[2] = {-1, -1};
+    if (comm && ::socketpair(AF_UNIX, SOCK_DGRAM, 0, sv) < 0)
+    {
+        ::perror("process_create socketpair");
+        return -1;
+    }
+
     pid_t debug_pid = ::fork();
     if (debug_pid < 0) {
         ::perror("process_create fork");
         ::close(pipe_fd[0]);
         ::close(pipe_fd[1]);
+        if (comm)
+        {
+            ::close(sv[0]);
+            ::close(sv[1]);
+        }
         return -1;
     }
 
     if (debug_pid == 0)
     {
         ::close(pipe_fd[0]);
+
+        if (comm)
+        {
+            // close parent's end
+            ::close(sv[0]);
+
+            // redirect all three standard streams to socket
+            ::dup2(sv[1], STDIN_FILENO);
+            ::dup2(sv[1], STDOUT_FILENO);
+            ::dup2(sv[1], STDERR_FILENO);
+    
+            // original sv[1] no longer needed — stdin/out/err cover it now
+            ::close(sv[1]);
+        }
 
         std::string path = argv[0];
         
@@ -169,11 +198,12 @@ pid_t process_create(char *const argv[])
         std::string err_msg = "process_create execvp failed for " + path + ": " + std::strerror(errno);
         ::write(pipe_fd[1], err_msg.c_str(), err_msg.size());
         ::close(pipe_fd[1]);
-        ::exit(1);
+        ::_exit(1);
     }
 
     // --- PARENT ---
-    ::close(pipe_fd[1]); 
+    ::close(pipe_fd[1]);
+    if (comm) ::close(sv[1]);  // close child's end
 
     char buf[256];
     ssize_t b_read = ::read(pipe_fd[0], buf, sizeof(buf) - 1);
@@ -184,8 +214,11 @@ pid_t process_create(char *const argv[])
         buf[b_read] = '\0';
         ::waitpid(debug_pid, nullptr, 0);
         std::cerr << buf << std::endl;
+        if(comm) ::close(sv[0]);
         return -1;
     }
+
+    if (comm) **comm = sv[0];
 
     return debug_pid;
 }
@@ -272,4 +305,16 @@ void print_vec(std::vector<std::uint32_t> &res, virt_addr start)
     std::cout << std::dec << std::noshowbase;
     std::cout << "____________________________________\n"; 
 
+}
+
+void read_from_socket(int fd, std::string &buf)
+{
+    buf.resize(BUF_SIZE);
+    ssize_t bytes_read = ::read(fd, buf.data(), BUF_SIZE);
+    if (bytes_read < 0)
+    {
+        Error::send_errno("Pipe read failed");
+    }
+
+    buf.resize(static_cast<std::size_t>(bytes_read));
 }

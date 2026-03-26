@@ -27,7 +27,6 @@
 
 #include <variant>
 #include <cstddef>
-#include <cstdint>
 #include <string_view>
 #include <type_traits>
 
@@ -197,7 +196,7 @@ T register_value_cast(const RegisterValue& val)
             Error::send("Requested type is larger than stored size");
 
         T result;
-        memcpy(&result, &stored, sizeof(T));
+        std::memcpy(&result, &stored, sizeof(T));
         return result;
     };
 

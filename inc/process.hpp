@@ -26,15 +26,14 @@
 #define BKPT_LIB_PROCESS_H
 
 #include <memory>
-#include <vector>
+#include <optional>
 #include <string_view>
 #include <sys/types.h>
 
+#include "types.hpp"
 #include "registers.hpp"
 #include "stoppoint_collection.hpp"
 #include "breakpoint_site.hpp"
-
-using virt_addr = std::uint64_t;
 
 enum class ProcessState : uint8_t
 {
@@ -55,7 +54,8 @@ public:
     Process &operator=(const Process &) = delete;
 
     static std::unique_ptr<Process>
-    launch(std::vector<std::string_view> &exec_args);
+    launch(std::vector<std::string_view> &exec_args,
+        std::optional<int*> comm = std::nullopt);
 
     static std::unique_ptr<Process>
     attach(pid_t pid);
@@ -79,6 +79,18 @@ public:
     breakpoint_sites() { return breakpoint_sites_; }
     const StoppointCollection<BreakpointSite>&
     breakpoint_sites() const { return breakpoint_sites_; }
+
+    std::vector<std::uint8_t>
+    read_memory(virt_addr address, std::size_t size) const;
+    void write_memory(virt_addr address, Span<const std::uint8_t> data);
+    template <class T>
+    T read_memory_as(virt_addr address) const
+    {
+        T res;
+        auto data = read_memory(address, sizeof(T));
+        std::memcpy(&res, data.data(), sizeof(T));
+        return res;
+    }
 
 #ifdef DEBUG_MODE
     std::vector<std::uint32_t>

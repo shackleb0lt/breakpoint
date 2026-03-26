@@ -25,13 +25,11 @@
 #ifndef BKPT_LIB_STOPPOINT_H
 #define BKPT_LIB_STOPPOINT_H
 
-#include <vector>
 #include <memory>
 #include <algorithm>
 
 #include "error.hpp"
-
-using virt_addr = std::uint64_t;
+#include "types.hpp"
 
 template <class Stoppoint>
 class StoppointCollection
