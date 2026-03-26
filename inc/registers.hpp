@@ -30,6 +30,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include "types.hpp"
 #include "error.hpp"
 
 #if defined(__aarch64__) 
