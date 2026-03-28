@@ -22,48 +22,33 @@
  *
  */
 
-#ifndef BKPT_APP_COMMANDS_HPP
-#define BKPT_APP_COMMANDS_HPP
+#ifndef BKPT_LIB_DISASSEMBLER_HPP
+#define BKPT_LIB_DISASSEMBLER_HPP
 
-#include <string_view>
-#include <utility>
-#include <vector>
+#include "types.hpp"
 
-enum class Action
+#include <optional>
+#include <string>
+
+struct instruction
 {
-    Invalid = 0,
-    Ambiguous,
-    ReadRegAll,
-    ReadRegGPR,
-    ReadReg,
-    WriteReg,
-    MemReadDef,
-    MemReadCnt,
-    MemWrite,
-    Incomplete,
-    Continue,
-    StepInst,
-    Disassmbl,
-    Disassmbl1,
-    Disassmbl2,
-    BPSiteList,
-    BPSiteSet,
-    BPSiteEn,
-    BPSiteDis,
-    BPSiteDel,
-    Help,
-    Quit,
-    None,
+    virt_addr addr;
+    std::string text;
 };
 
-struct Command
-{
-    std::string_view keyword;
-    Action action;
-    const Command *children;
-};
+class Process;
 
-std::pair<Action, std::vector<std::string_view>>
-process_line(std::string_view line);
+class Disassembler
+{
+public:
+    Disassembler(Process &proc) : process_(&proc) {}
+
+    std::vector<instruction> disassemble(std::size_t count,
+                                         std::optional<virt_addr> addr = std::nullopt);
+
+private:
+    friend Process;
+    Process *process_;
+};
 
 #endif

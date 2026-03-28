@@ -19,6 +19,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Catch2 3 REQUIRED)
 find_package(fmt CONFIG REQUIRED)
+find_package(capstone CONFIG REQUIRED)
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" CONFIG_TYPE)
 
@@ -44,6 +45,7 @@ add_library(breakpoint STATIC
     src/process.cpp
     src/pipe.cpp
     src/registers.cpp
+    src/disassembler.cpp
     src/breakpoint_site.cpp
 )
 
@@ -53,6 +55,7 @@ add_library(breakpoint STATIC
 target_include_directories(breakpoint PUBLIC inc)
 target_include_directories(breakpoint PRIVATE src)
 target_compile_options(breakpoint PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(breakpoint PRIVATE capstone::capstone)
 
 # ---------------------------------------------------------------------------
 # 3. Final Executable: bkpt

@@ -76,6 +76,16 @@ const Command cmd_memory[] = {
     {"",            Action::Invalid,    nullptr}
 };
 
+const Command cmd_disassmbl2[] = {
+    {"",            Action::Disassmbl2, nullptr},
+    {"",            Action::Invalid,    nullptr}
+};
+
+const Command cmd_disassmbl[] = {
+    {"",            Action::Disassmbl1, cmd_disassmbl2},
+    {"",            Action::Invalid,    nullptr}
+};
+
 const Command cmd_breakpoint_set[] = {
     {"",            Action::BPSiteSet,  nullptr},
     {"",            Action::Invalid,    nullptr}
@@ -108,6 +118,7 @@ const Command cmd_breakpoint[] = {
 const Command top_level[] = {
     {"breakpoint",  Action::Incomplete, cmd_breakpoint},
     {"continue",    Action::Continue,   nullptr},
+    {"disassemble", Action::Disassmbl,  cmd_disassmbl},
     {"help",        Action::Help,       nullptr},
     {"memory",      Action::Incomplete, cmd_memory},
     {"register",    Action::Incomplete, cmd_register},

@@ -36,6 +36,7 @@
 #include "commands.hpp"
 #include "error.hpp"
 #include "process.hpp"
+#include "disassembler.hpp"
 
 #define COMMANDS_HISTORY "/tmp/breakpoint.txt"
 
@@ -47,33 +48,35 @@ void print_usage(std::string_view exe_name)
               << "Usage: " << exe_name << "<executable-file> [args]" << std::endl;
 }
 
-void print_stop_reason(ProcessState state, std::uint8_t ret)
+void print_stop_reason(ProcessPtr &proc, std::uint8_t ret)
 {
-    switch (state)
+    switch (proc->get_state())
     {
         case ProcessState::Exited:
-            std::cout << "Process exited with status "
-                      << static_cast<int>(ret) << std::endl;
+            fmt::println("Process exited with status {}", static_cast<int>(ret));
             break;
         case ProcessState::Terminated:
-            std::cout << "Process terminated with signal "
-                      << sigabbrev_np(ret) << std::endl;
+            fmt::println("Process terminated with signal {}", sigabbrev_np(ret));
             break;
         case ProcessState::Stopped:
-            std::cout << "Process stopped with signal "
-                      << sigabbrev_np(ret) << std::endl;
+            fmt::println("Process stopped with signal {} at {:#016x}",
+                sigabbrev_np(ret), proc->get_pc());
             break;
         default:
             break;
     }
 }
 
+bool sv_is_hex(std::string_view sv)
+{
+    return (sv.size() >= 2) && (sv[0] == '0') && (sv[1] == 'x' || sv[1] == 'X');
+}
+
 std::uint64_t to_positive_integral(std::string_view token)
 {
     uint64_t val = 0;
 
-    if (token.size() > 2 && token[0] == '0' &&
-       (token[1] == 'x' || token[1] == 'X'))
+    if (sv_is_hex(token))
     {
         std::string_view hex = token.substr(2);
         auto [ptr, ec] = std::from_chars(hex.data(), hex.data() + hex.size(), val, 16);
@@ -212,6 +215,20 @@ display_memory(std::vector<std::uint8_t> &data, virt_addr addr)
     }
 }
 
+void display_disassembly(ProcessPtr &proc, virt_addr addr = 0, std::size_t count = 5)
+{
+    Disassembler dis(*proc);
+    if (addr == 0)
+        addr = proc->get_pc();
+
+    auto insn = dis.disassemble(count, addr);
+    std::cout << insn.size() << "\n";
+    for (auto &ins : insn)
+    {
+        fmt::print("{:#018x}: {}\n", ins.addr, ins.text);
+    }
+}
+
 bool handle_command(std::string_view line, ProcessPtr &proc)
 {
     auto [action, tokens] = process_line(line);
@@ -245,13 +262,17 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
         if (action == Action::Continue)
         {
             proc->resume();
-            std::uint8_t ret =  proc->wait();
-            print_stop_reason(proc->get_state(), ret);
+            std::uint8_t ret = proc->wait();
+            print_stop_reason(proc, ret);
+            if (proc->get_state() == ProcessState::Stopped)
+                display_disassembly(proc);
         }
         else if(action == Action::StepInst)
         {
             std::uint8_t ret = proc->step_instruction();
-            print_stop_reason(proc->get_state(), ret);
+            print_stop_reason(proc, ret);
+            if (proc->get_state() == ProcessState::Stopped)
+                display_disassembly(proc);
         }
         else if (action == Action::ReadReg)
         {
@@ -283,6 +304,26 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
         else if (action == Action::WriteReg)
         {
             proc->registers().write(tokens[2], tokens[3]);
+        }
+        else if (action == Action::Disassmbl)
+        {
+            display_disassembly(proc);
+        }
+        else if (action == Action::Disassmbl1)
+        {
+            if (sv_is_hex(tokens[1]))
+                display_disassembly(proc, to_positive_integral(tokens[1]));
+            else
+                display_disassembly(proc, proc->get_pc(), to_positive_integral(tokens[1]));
+        }
+        else if (action == Action::Disassmbl2)
+        {
+            if (sv_is_hex(tokens[1]))
+                display_disassembly(proc, to_positive_integral(tokens[1]), to_positive_integral(tokens[2]));
+            else if (sv_is_hex(tokens[2]))
+                display_disassembly(proc, to_positive_integral(tokens[2]), to_positive_integral(tokens[1]));
+            else
+                throw std::invalid_argument("Address must be in hex format");
         }
         else if (action == Action::MemReadDef)
         {

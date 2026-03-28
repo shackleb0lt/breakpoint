@@ -82,15 +82,9 @@ public:
 
     std::vector<std::uint8_t>
     read_memory(virt_addr address, std::size_t size) const;
+    std::vector<std::uint8_t>
+    read_memory_without_traps(virt_addr address, std::size_t size) const;
     void write_memory(virt_addr address, Span<const std::uint8_t> data);
-    template <class T>
-    T read_memory_as(virt_addr address) const
-    {
-        T res;
-        auto data = read_memory(address, sizeof(T));
-        std::memcpy(&res, data.data(), sizeof(T));
-        return res;
-    }
 
 #ifdef DEBUG_MODE
     std::vector<std::uint32_t>

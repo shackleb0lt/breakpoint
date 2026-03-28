@@ -416,6 +416,23 @@ void Process::write_memory(virt_addr address, Span<const std::uint8_t> data)
     }
 }
 
+std::vector<std::uint8_t>
+Process::read_memory_without_traps(virt_addr address, std::size_t size) const
+{
+    auto memory = read_memory(address, size);
+    auto sites = breakpoint_sites_.get_in_region(address, address + size);
+    for (auto &site: sites)
+    {
+        if (site->is_enabled() == false)
+            continue;
+        auto offset = site->address() - address;
+
+        std::memcpy(&memory[offset], &(site->saved_data_), 4);
+    }
+
+    return memory;
+}
+
 #ifdef DEBUG_MODE
 std::vector<std::uint32_t>
 Process::get_instructions(virt_addr addr, std::size_t count)

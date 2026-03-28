@@ -57,8 +57,10 @@ TEST_CASE("Read Write Memory Directly")
     virt_addr ptr;
     std::memcpy(&ptr, output.data(), sizeof(virt_addr));
 
-    uint64_t data = proc->read_memory_as<uint64_t>(ptr);
-    CHECK(data == 0xcafecafedeaddead);
+    uint64_t val;
+    auto data = proc->read_memory(ptr, sizeof(val));
+    std::memcpy(&val, data.data(), sizeof(val));
+    CHECK(val == 0xcafecafedeaddead);
 
     proc->resume();
 
