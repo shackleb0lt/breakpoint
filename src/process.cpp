@@ -154,6 +154,7 @@ void Process::resume()
     set_registers();
 
     virt_addr pc = get_pc();
+
     if (breakpoint_sites_.enabled_stoppoint_at_address(pc))
     {
         BreakpointSite &bp = breakpoint_sites_.get_by_address(pc);
@@ -305,6 +306,20 @@ void Process::get_registers()
     {
         Error::send_errno("Failed to read vector registers");
     }
+
+    iov.iov_base = reg_state_->hwbp_ptr();
+    iov.iov_len = reg_state_->hwbp_size();
+    if (ptrace(PTRACE_GETREGSET, pid_, NT_ARM_HW_BREAK, &iov) < 0)
+    {
+        Error::send_errno("Failed to read hardware breakpoints");
+    }
+
+    iov.iov_base = reg_state_->hwwp_ptr();
+    iov.iov_len = reg_state_->hwwp_size();
+    if (ptrace(PTRACE_GETREGSET, pid_, NT_ARM_HW_WATCH, &iov) < 0)
+    {
+        Error::send_errno("Failed to read hardware watchpoints");
+    }
 }
 
 void Process::set_registers()
@@ -314,14 +329,14 @@ void Process::set_registers()
     iov.iov_len = reg_state_->gpr_size();
     if (ptrace(PTRACE_SETREGSET, pid_, NT_PRSTATUS, &iov) < 0)
     {
-        Error::send_errno("Failed to read general purpose registers");
+        Error::send_errno("Failed to write general purpose registers");
     }
 
     iov.iov_base = reg_state_->fpr_ptr();
     iov.iov_len = reg_state_->fpr_size();
     if (ptrace(PTRACE_SETREGSET, pid_, NT_FPREGSET, &iov) < 0)
     {
-        Error::send_errno("Failed to read vector registers");
+        Error::send_errno("Failed to write vector registers");
     }
 }
 
@@ -343,7 +358,7 @@ void Process::set_pc(virt_addr address)
 }
 
 BreakpointSite&
-Process::create_breakpoint_site(virt_addr addr)
+Process::create_breakpoint_site(virt_addr addr, bool hw , bool intnl)
 {
     if (breakpoint_sites_.contains_address(addr))
     {
@@ -351,8 +366,136 @@ Process::create_breakpoint_site(virt_addr addr)
             std::to_string(addr));
     }
     return breakpoint_sites_.push(
-        std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, addr)));
+        std::unique_ptr<BreakpointSite>(new BreakpointSite(*this, addr, hw, intnl)));
 }
+
+int Process::set_hw_breakpoint(virt_addr addr)
+{
+    unsigned int count = reg_state_->hwbp_.dbg_info & 0xff;
+    unsigned int i = 0;
+    for (; i < count; i++)
+    {
+        if (reg_state_->in_use_hwbp_[i] == false)
+            break; 
+    }
+
+    if (i == count)
+        return -1;
+
+    uint32_t ctrl = (0xff << 5) | // Byte Address Select = Any
+                    (0b10 << 1) | // Privelege 10=user, 01=kernel
+                    (1 << 0);     // E: enable
+
+    reg_state_->hwbp_.dbg_regs[i].addr = addr;
+    reg_state_->hwbp_.dbg_regs[i].ctrl = ctrl;
+
+    reg_state_->in_use_hwbp_[i] = true;
+
+    struct iovec iov;
+    iov.iov_base = reg_state_->hwbp_ptr();
+    iov.iov_len = reg_state_->hwbp_size();
+    if (ptrace(PTRACE_SETREGSET, pid_, NT_ARM_HW_BREAK, &iov) < 0)
+    {
+        Error::send_errno("Failed to write hardware breakpoints");
+    }
+    return i;
+}
+
+void Process::clear_hw_breakpoint(int index)
+{
+    unsigned int count = reg_state_->hwbp_.dbg_info & 0xff;
+
+    if (index < 0 || static_cast<unsigned int>(index) > count)
+    {
+        Error::send("Hardware Register ID out of range");
+        return;
+    }
+    
+    reg_state_->hwbp_.dbg_regs[index].addr = 0;
+    reg_state_->hwbp_.dbg_regs[index].ctrl = 0;
+
+    reg_state_->in_use_hwbp_[index] = false;
+
+    struct iovec iov;
+    iov.iov_base = reg_state_->hwbp_ptr();
+    iov.iov_len = reg_state_->hwbp_size();
+    if (ptrace(PTRACE_SETREGSET, pid_, NT_ARM_HW_BREAK, &iov) < 0)
+    {
+        Error::send_errno("Failed to write hardware breakpoints");
+    }
+}
+
+int Process::set_hw_watchpoint(virt_addr addr)
+{
+    unsigned int count = reg_state_->hwwp_.dbg_info & 0xff;
+    unsigned int i = 0;
+    for (; i < count; i++)
+    {
+        if (reg_state_->in_use_hwwp_[i] == false)
+            break; 
+    }
+
+    if (i == count)
+        return -1;
+    
+    /*
+    // write only watchpoint
+    uint32_t write_ctrl = (0xff << 6) |   // BAS: all bytes
+                        (0b01 << 4) |   // LSC: write only
+                        (0b10 << 1) |   // PAC: EL0 userspace
+                        (1 << 0);       // E: enable
+
+    // read only watchpoint
+    uint32_t read_ctrl  = (0xff << 6) |   // BAS: all bytes
+                        (0b10 << 4) |   // LSC: read only
+                        (0b10 << 1) |   // PAC: EL0 userspace
+                        (1 << 0);       // E: enable
+    */
+
+    // read + write watchpoint
+    uint32_t rw_ctrl    = (0xff << 6) | // BAS: all bytes
+                          (0b11 << 4) | // LSC: read+write
+                          (0b10 << 1) | // PAC: EL0 userspace
+                          (1 << 0);     // E: enable
+    
+
+    reg_state_->hwwp_.dbg_regs[i].addr = addr;
+    reg_state_->hwwp_.dbg_regs[i].ctrl = rw_ctrl;
+
+    reg_state_->in_use_hwwp_[i] = true;
+
+    iovec iov;
+    iov.iov_base = reg_state_->hwwp_ptr();
+    iov.iov_len = reg_state_->hwwp_size();
+    if (ptrace(PTRACE_SETREGSET, pid_, NT_ARM_HW_WATCH, &iov) < 0)
+    {
+        Error::send_errno("Failed to write hardware watchpoints");
+    }
+
+    return i;
+}
+
+void Process::clear_hw_watchpoint(int index)
+{
+    unsigned int count = reg_state_->hwwp_.dbg_info & 0xff;
+
+    if (index < 0 || static_cast<unsigned int>(index) > count)
+        return;
+
+    reg_state_->hwwp_.dbg_regs[index].addr = 0;
+    reg_state_->hwwp_.dbg_regs[index].ctrl = 0;
+
+    reg_state_->in_use_hwwp_[index] = false;
+
+    iovec iov;
+    iov.iov_base = reg_state_->hwwp_ptr();
+    iov.iov_len = reg_state_->hwwp_size();
+    if (ptrace(PTRACE_SETREGSET, pid_, NT_ARM_HW_WATCH, &iov) < 0)
+    {
+        Error::send_errno("Failed to write hardware watchpoints");
+    }
+}
+
 
 std::vector<std::uint8_t>
 Process::read_memory(virt_addr address, std::size_t size) const
@@ -423,7 +566,7 @@ Process::read_memory_without_traps(virt_addr address, std::size_t size) const
     auto sites = breakpoint_sites_.get_in_region(address, address + size);
     for (auto &site: sites)
     {
-        if (site->is_enabled() == false)
+        if (site->is_enabled() == false || site->is_hardware())
             continue;
         auto offset = site->address() - address;
 

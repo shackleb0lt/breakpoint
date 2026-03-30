@@ -213,17 +213,49 @@ private:
 #if defined(__aarch64__)
     struct user_pt_regs gpr_{};
     struct user_fpsimd_state fpr_{};
+    struct user_hwdebug_state hwbp_ {};
+    struct user_hwdebug_state hwwp_ {};
+    bool in_use_hwbp_[16];
+    bool in_use_hwwp_[16];
 #elif defined(__x86_64__)
     struct user_regs_struct gpr_{};
     struct user_fpregs_struct fpr_{};
 #endif
 
-    Registers(Process &proc): proc_(&proc) {}
+    Registers(Process &proc): proc_(&proc)
+    {
+        memset(in_use_hwbp_, false, 16);
+        memset(in_use_hwwp_, false, 16);
+        memset(&hwbp_, 0, sizeof(hwbp_));
+        memset(&hwwp_, 0, sizeof(hwwp_));
+    }
 
     void *gpr_ptr() { return &gpr_; }
     void *fpr_ptr() { return &fpr_; }
+    void *hwbp_ptr() { return &hwbp_; }
+    void *hwwp_ptr() { return &hwwp_; }
     std::size_t gpr_size() { return sizeof(gpr_); }
     std::size_t fpr_size() { return sizeof(fpr_); }
+    std::size_t hwbp_size()
+    {
+        if (hwbp_.dbg_info == 0)
+            return sizeof(user_hwdebug_state);
+
+        size_t count = hwbp_.dbg_info & 0xff;
+        size_t size = offsetof(user_hwdebug_state, dbg_regs);
+        size += (count * sizeof(hwbp_.dbg_regs[0]));
+        return size;
+    }
+    std::size_t hwwp_size()
+    {
+        if (hwwp_.dbg_info == 0)
+            return sizeof(user_hwdebug_state);
+
+        size_t count = hwwp_.dbg_info & 0xff;
+        size_t size = offsetof(user_hwdebug_state, dbg_regs);
+        size += (count * sizeof(hwwp_.dbg_regs[0]));
+        return size;
+    }
 
     std::uint8_t *register_offset(const RegisterInfo *info);
     void write(const RegisterInfo* info, RegisterValue val);

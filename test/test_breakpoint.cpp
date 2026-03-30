@@ -191,3 +191,68 @@ TEST_CASE("Breakpoint Enable and Disable")
 
     CHECK_FALSE(process_exists(pid));
 }
+
+TEST_CASE("Hardware Breakpoint Testing")
+{
+    std::vector<std::string_view> exec = 
+    {
+        "anti_gdb"
+    };
+
+    int sockfd = -1;
+    auto proc = Process::launch(exec, &sockfd);
+    REQUIRE(proc != nullptr);
+
+    pid_t pid = proc->get_pid();
+    REQUIRE(process_exists(pid));
+    CHECK(process_status(pid) == 't');
+    CHECK(proc->get_state() == ProcessState::Stopped);
+
+    proc->resume();
+
+    // Read innocent function address
+    uint8_t info = proc->wait();
+    CHECK(process_status(pid) == 't');
+    CHECK(proc->get_state() == ProcessState::Stopped);
+    CHECK(info == SIGTRAP);
+
+    std::string output;
+    read_from_socket(sockfd, output);
+    CHECK(output.size() > 0);
+
+    virt_addr ptr;
+    std::memcpy(&ptr, output.data(), sizeof(virt_addr));
+
+    auto &soft = proc->create_breakpoint_site(ptr, false);
+    soft.enable();
+
+    proc->resume();
+    proc->wait();
+
+    output.clear();
+    read_from_socket(sockfd, output);
+    CHECK(output == "Putting pepporoni on pizza...\n");
+
+    proc->breakpoint_sites().remove_by_id(soft.id());
+
+    CHECK(proc->breakpoint_sites().empty() == true);
+    
+    auto &hard = proc->create_breakpoint_site(ptr, true);
+    hard.enable();
+
+    proc->resume();
+    proc->wait();
+
+    CHECK(proc->get_pc() == ptr);
+    proc->resume();
+    proc->wait();
+
+    output.clear();
+    read_from_socket(sockfd, output);
+    CHECK(output == "Putting pineapple on pizza...\n");
+
+    proc.reset();
+
+    CHECK_FALSE(process_exists(pid));
+}
+

@@ -73,7 +73,13 @@ public:
     Registers &registers() { return *reg_state_; }
     const Registers &registers() const { return *reg_state_; }
 
-    BreakpointSite& create_breakpoint_site(virt_addr address);
+    BreakpointSite& create_breakpoint_site(
+        virt_addr address, bool hw = false, bool intnl = false);
+
+    int set_hw_breakpoint(virt_addr addr);
+    int set_hw_watchpoint(virt_addr addr);
+    void clear_hw_breakpoint(int index);
+    void clear_hw_watchpoint(int index);
 
     StoppointCollection<BreakpointSite>&
     breakpoint_sites() { return breakpoint_sites_; }

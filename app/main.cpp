@@ -143,11 +143,9 @@ parse_vector(std::string_view token)
     return bytes;
 }
 
-std::string
-display_register(const RegisterID id, const RegisterValue& val)
+void display_register(const RegisterID id, const RegisterValue& val)
 {
-    std::string_view name = get_register_name(id);
-    std::string output = fmt::format("{:<6}: ", name);
+    fmt::print("{:<6}: ", get_register_name(id));
 
     std::visit([&](auto&& arg)
     {
@@ -163,8 +161,8 @@ display_register(const RegisterID id, const RegisterValue& val)
             std::memcpy(&as_double, &low,    sizeof(double));
             std::memcpy(&as_float,  &low_32, sizeof(float));
 
-            output += fmt::format("0x{:016x}{:016x} | dbl:{} | flt:{}",
-                                  high, low, as_double, as_float);
+            fmt::print("0x{:016x}{:016x} | dbl:{} | flt:{}",
+                high, low, as_double, as_float);
             return;
         }
 
@@ -176,13 +174,13 @@ display_register(const RegisterID id, const RegisterValue& val)
                 {
                     double dbl;
                     std::memcpy(&dbl, &arg, sizeof(double));
-                    output += fmt::format("0x{:016x} (dbl:{})", arg, dbl);
+                    fmt::print("0x{:016x} (dbl:{})", arg, dbl);
                 }
                 else
                 {
                     float flt;
                     std::memcpy(&flt, &arg, sizeof(float));
-                    output += fmt::format("0x{:016x} (flt:{})", arg, flt);
+                    fmt::print("0x{:016x} (flt:{})", arg, flt);
                 }
                 return;
             }
@@ -193,16 +191,13 @@ display_register(const RegisterID id, const RegisterValue& val)
             using SignedT = std::make_signed_t<T>;
             uint64_t uval = static_cast<uint64_t>(arg);
             int64_t  sval = static_cast<int64_t>(static_cast<SignedT>(arg));
-            output += fmt::format("0x{:016x} (u:{} s:{})", uval, uval, sval);
+            fmt::print("0x{:016x} (u:{} s:{})", uval, uval, sval);
         }
 
     }, val);
-
-    return output;
 }
 
-void
-display_memory(std::vector<std::uint8_t> &data, virt_addr addr)
+void display_memory(std::vector<std::uint8_t> &data, virt_addr addr)
 {
     for (std::size_t i = 0; i < data.size(); i += 16)
     {
@@ -222,11 +217,32 @@ void display_disassembly(ProcessPtr &proc, virt_addr addr = 0, std::size_t count
         addr = proc->get_pc();
 
     auto insn = dis.disassemble(count, addr);
-    std::cout << insn.size() << "\n";
     for (auto &ins : insn)
     {
         fmt::print("{:#018x}: {}\n", ins.addr, ins.text);
     }
+}
+
+void display_breakpoints(ProcessPtr &proc)
+{
+    if (proc->breakpoint_sites().empty())
+    {
+        fmt::println("No breakpoints set");
+        return;
+    }
+
+    fmt::println("Current breakpoints:");
+    auto func = [](BreakpointSite& site)
+    {
+        if (site.is_internal())
+            return;
+
+        fmt::print("{}: address = {:#x}, {}\n",
+            site.id(), site.address(),
+            site.is_enabled() ? "enabled" : "disabled");
+    };
+
+    proc->breakpoint_sites().for_each(func);
 }
 
 bool handle_command(std::string_view line, ProcessPtr &proc)
@@ -277,7 +293,7 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
         else if (action == Action::ReadReg)
         {
             RegisterValue val = proc->registers().read<RegisterValue>(tokens[2]);
-            std::cout << display_register(get_register_id(tokens[2]), val) << std::endl;
+            display_register(get_register_id(tokens[2]), val);
         }
         else if (action == Action::ReadRegGPR)
         {
@@ -287,7 +303,7 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
             {
                 RegisterID id = static_cast<RegisterID>(curr);
                 RegisterValue val = proc->registers().read<RegisterValue>(id);
-                std::cout << display_register(id, val) << std::endl;
+                display_register(id, val);
             }
         }
         else if (action == Action::ReadRegAll)
@@ -298,7 +314,7 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
             {
                 RegisterID id = static_cast<RegisterID>(curr);
                 RegisterValue val = proc->registers().read<RegisterValue>(id);
-                std::cout << display_register(id, val) << std::endl;
+                display_register(id, val);
             }
         }
         else if (action == Action::WriteReg)
@@ -346,27 +362,17 @@ bool handle_command(std::string_view line, ProcessPtr &proc)
         }
         else if (action == Action::BPSiteList)
         {
-            if (proc->breakpoint_sites().empty())
-            {
-                fmt::println("No breakpoints set");
-            }
-            else
-            {
-                fmt::println("Current breakpoints:");
-                auto func = [](BreakpointSite& site)
-                {
-                    fmt::print("{}: address = {:#x}, {}\n",
-                        site.id(), site.address(),
-                        site.is_enabled() ? "enabled" : "disabled");
-                };
-
-                proc->breakpoint_sites().for_each(func);
-            }
+            display_breakpoints(proc);
         }
         else if (action == Action::BPSiteSet)
         {
             virt_addr address = to_positive_integral(tokens[2]);
             proc->create_breakpoint_site(address).enable();
+        }
+        else if (action == Action::BPSiteSetHW)
+        {
+            virt_addr address = to_positive_integral(tokens[2]);
+            proc->create_breakpoint_site(address, true).enable();
         }
         else if (action == Action::BPSiteEn)
         {

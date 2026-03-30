@@ -37,19 +37,29 @@ namespace
     }
 }
 
-BreakpointSite::BreakpointSite(Process &proc, virt_addr addr)
+BreakpointSite::BreakpointSite(Process &proc,
+    virt_addr address, bool is_hw, bool is_int)
 {
-    address_ = addr;
+    address_ = address;
     process_ = &proc;
     is_enabled_ = false;
+    is_hardware_ = is_hw;
+    is_internal_ = is_int;
     saved_data_ = 0;
-    id_ = get_next_id();
+    id_ = is_internal_? -1 : get_next_id();
 }
 
 void BreakpointSite::enable()
 {
     if (is_enabled_)
         return;
+
+    if (is_hardware_)
+    {
+        hw_register_ind_ = process_->set_hw_breakpoint(address_);
+        is_enabled_ = true;
+        return;
+    }
 
     errno = 0;
     std::uint64_t data = ptrace(PTRACE_PEEKDATA, process_->get_pid(), address_, nullptr);
@@ -85,6 +95,14 @@ void BreakpointSite::disable()
 {
     if (!is_enabled_)
         return;
+    
+    if (is_hardware_)
+    {
+        process_->clear_hw_breakpoint(hw_register_ind_);
+        hw_register_ind_ = -1;
+        is_enabled_ = false;
+        return;
+    }
 
     errno = 0;
     std::uint64_t data = ptrace(PTRACE_PEEKDATA, process_->get_pid(), address_, nullptr);

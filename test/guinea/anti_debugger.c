@@ -22,25 +22,50 @@
  *
  */
 
- 
 #include <stdio.h>
+#include <unistd.h>
+#include <signal.h>
 
-void func1(char *msg, unsigned int x)
+void an_innocent_function()
 {
-    printf("%s %x\n", msg, x);
+    puts("Putting pineapple on pizza...");
+}
+
+void an_innocent_function_end() {}
+
+int checksum()
+{
+    volatile const char* start = (volatile const char*)&an_innocent_function;
+    volatile const char* end   = (volatile const char*)&an_innocent_function_end;
+    
+    int sum = 0;
+    while (start != end)
+    {
+        sum += *start++;
+    }
+    return sum;
 }
 
 int main()
 {
-    unsigned int x = 0;
-    x += 0x12;
-    func1("First Run", x);
+    int safe = checksum();
 
-    x += 0x34;
-    func1("Second Run", x);
+    void *ptr = (void *) &an_innocent_function;
+    write(STDOUT_FILENO, &ptr, sizeof(void *));
+    fflush(stdout);
 
-    x += 0x56;
-    func1("Third Run", x);
+    raise(SIGTRAP);
+
+    while (1)
+    {
+        if (checksum() == safe)
+            an_innocent_function();
+        else
+            puts("Putting pepporoni on pizza...");
+
+        fflush(stdout);
+        raise(SIGTRAP);
+    }
 
     return 0;
 }

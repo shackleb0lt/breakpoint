@@ -310,10 +310,11 @@ void print_vec(std::vector<std::uint32_t> &res, virt_addr start)
 void read_from_socket(int fd, std::string &buf)
 {
     buf.resize(BUF_SIZE);
-    ssize_t bytes_read = ::read(fd, buf.data(), BUF_SIZE);
+    ssize_t bytes_read = recv(fd, buf.data(), BUF_SIZE, MSG_DONTWAIT);
+    
     if (bytes_read < 0)
     {
-        Error::send_errno("Pipe read failed");
+        Error::send_errno("Socket read failed");
     }
 
     buf.resize(static_cast<std::size_t>(bytes_read));

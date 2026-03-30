@@ -47,6 +47,7 @@ enum class Action
     Disassmbl1,
     Disassmbl2,
     BPSiteList,
+    BPSiteSetHW,
     BPSiteSet,
     BPSiteEn,
     BPSiteDis,

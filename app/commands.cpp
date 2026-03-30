@@ -86,8 +86,13 @@ const Command cmd_disassmbl[] = {
     {"",            Action::Invalid,    nullptr}
 };
 
+const Command cmd_breakpoint_set_val[] = {
+    {"hardware",    Action::BPSiteSetHW, nullptr},
+    {"",            Action::Invalid,     nullptr}
+};
+
 const Command cmd_breakpoint_set[] = {
-    {"",            Action::BPSiteSet,  nullptr},
+    {"",            Action::BPSiteSet,  cmd_breakpoint_set_val},
     {"",            Action::Invalid,    nullptr}
 };
 

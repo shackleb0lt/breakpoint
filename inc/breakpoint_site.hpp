@@ -43,7 +43,10 @@ public:
     void enable();
     void disable();
 
-    bool is_enabled() const { return is_enabled_; }
+    bool is_enabled() const  { return is_enabled_; }
+    bool is_hardware() const { return is_hardware_; }
+    bool is_internal() const { return is_internal_; }
+
     virt_addr address() const { return address_; }
 
     bool at_address(virt_addr addr) const
@@ -58,10 +61,15 @@ public:
 
 private:
     friend Process;
-    BreakpointSite(Process &proc, virt_addr address);
+    BreakpointSite(Process &proc, virt_addr address,
+        bool is_hw = false, bool is_int = false);
 
     id_type id_;
     bool is_enabled_;
+    bool is_hardware_;
+    bool is_internal_;
+
+    int hw_register_ind_ = -1;
     virt_addr address_;
     std::uint64_t saved_data_;
     Process* process_;
